@@ -222,6 +222,19 @@ namespace Dizzy.FirewoodBundle
         }
     }
 
+    [HarmonyPatch(typeof(StoveFuelTrigger), nameof(StoveFuelTrigger.InsertFuel))]
+    internal static class FirewoodStoveInsertPatch
+    {
+        // The stove pulls in any fuel whose collider overlaps the fire while the ship moves.
+        // A bundle must stay outside. A single log, including one peeled off for a click, still burns.
+        private static bool Prefix(ShipItem item)
+        {
+            if (!FirewoodBundleConfig.IsEnabled)
+                return true;
+            return FirewoodPieces.CountOf(item) <= 1;
+        }
+    }
+
     [HarmonyPatch(typeof(ShipItem), nameof(ShipItem.OnItemClick))]
     internal static class FirewoodPlacePatch
     {
