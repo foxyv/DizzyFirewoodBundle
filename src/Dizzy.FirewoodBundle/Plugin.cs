@@ -5,6 +5,7 @@ using HarmonyLib;
 namespace Dizzy.FirewoodBundle
 {
     [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
+    [BepInDependency("com.dizzy.sailwind.fixes", BepInDependency.DependencyFlags.SoftDependency)]
     [BepInProcess("Sailwind.exe")]
     public class Plugin : BaseUnityPlugin
     {
@@ -27,6 +28,7 @@ namespace Dizzy.FirewoodBundle
             try
             {
                 _harmony.PatchAll(typeof(Plugin).Assembly);
+                FirewoodBigLookPatch.Apply(_harmony);
             }
             catch (System.Exception ex)
             {

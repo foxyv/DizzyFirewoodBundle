@@ -10,8 +10,8 @@ namespace Dizzy.FirewoodBundle
     {
         private static readonly RaycastHit[] Hits = new RaycastHit[32];
 
-        // A highlighted bundle blocks the drop. While one is held, aim through
-        // other bundles at the deck behind them.
+        // While holding firewood, highlight the log or bundle under the crosshair.
+        // Otherwise aim through other wood so the held piece can be set down.
         private static void Postfix(
             GoPointer __instance,
             PickupableItem ___heldItem,
@@ -30,6 +30,20 @@ namespace Dizzy.FirewoodBundle
                     AimAtNailedBundle(__instance, ___debugEditorPointer, ___raycastRay, ref ___pointedAtButton, ref ___currentLookDistance);
                 return;
             }
+
+            Ray ray = FirewoodPieces.MakeRay(___debugEditorPointer, ___raycastRay);
+            float woodDistance;
+            ShipItem wood = FirewoodPieces.PieceInFront(held, ray, out woodDistance);
+            if (wood != null)
+            {
+                if (___pointedAtButton != null && ___pointedAtButton != wood)
+                    ___pointedAtButton.ForceUnlook();
+                ___pointedAtButton = wood;
+                wood.Look(__instance);
+                ___currentLookDistance = woodDistance;
+                return;
+            }
+
             if (___pointedAtButton != null && !FirewoodPieces.IsPiece(___pointedAtButton))
                 return;
 
@@ -286,13 +300,24 @@ namespace Dizzy.FirewoodBundle
             ShipItem held = FirewoodPieces.AsShip(___pointer.GetHeldItem());
             if (FirewoodPieces.CanTarget(held, item))
             {
-                int combined = FirewoodPieces.CountOf(held) + count;
-                string add = count > 1 ? "add" : "bundle";
-                ___controlsText.text = FirewoodPieces.Fits(held, combined) ? "drop\n" + add : "drop\nfull";
-                if (___mouseRIcon != null)
-                    ___mouseRIcon.enabled = true;
+                int heldCount = FirewoodPieces.CountOf(held);
+                int combined = heldCount + count;
+                string action = "\nR Create Bundle";
+                if (!FirewoodPieces.Fits(held, combined))
+                    action = "\nR Bundle Full";
+                else if (heldCount > 1 && count <= 1)
+                    action = "\nR Gather Log";
+                else if (count > 1)
+                    action = "\nR Add to Bundle";
+                ___controlsText.text = action;
+                if (___textLicon != null)
+                    ___textLicon.gameObject.SetActive(false);
+                if (___mouseLIcon != null)
+                    ___mouseLIcon.enabled = false;
                 if (___textRIcon != null)
-                    ___textRIcon.text = "";
+                    ___textRIcon.gameObject.SetActive(false);
+                if (___mouseRIcon != null)
+                    ___mouseRIcon.enabled = false;
                 return;
             }
 
@@ -329,6 +354,32 @@ namespace Dizzy.FirewoodBundle
         private static void Prefix(ShipItem __instance)
         {
             FirewoodBundleBuilder.Forget(__instance);
+        }
+    }
+
+    // A two-handed carry clears the look target unless the held item can click it.
+    // Firewood cannot click other firewood, so a bundle lost the gather prompt.
+    internal static class FirewoodBigLookPatch
+    {
+        internal static void Apply(Harmony harmony)
+        {
+            System.Reflection.MethodInfo method = AccessTools.Method(
+                AccessTools.TypeByName("Dizzy.Fixes.BigCrateCarry"),
+                "CanUse");
+            if (method == null)
+                return;
+            harmony.Patch(method, postfix: new HarmonyMethod(typeof(FirewoodBigLookPatch), nameof(AllowFirewood)));
+        }
+
+        private static void AllowFirewood(PickupableItem held, GoPointerButton button, ref bool __result)
+        {
+            if (__result)
+                return;
+            ShipItem heldItem = FirewoodPieces.AsShip(held);
+            ShipItem target = FirewoodPieces.AsShip(button);
+            if (!FirewoodPieces.CanTarget(heldItem, target))
+                return;
+            __result = true;
         }
     }
 }

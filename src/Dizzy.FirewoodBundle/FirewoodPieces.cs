@@ -113,9 +113,9 @@ namespace Dizzy.FirewoodBundle
             return new Ray(raycastRay.origin, raycastRay.direction.normalized);
         }
 
-        // Other bundles stay off the look ray so the held one can be set down.
-        // Right-click still glues when a bundle is the first thing along that ray.
-        internal static ShipItem PieceInFront(ShipItem held, Ray ray)
+        // The piece under the crosshair, ignoring the log already in hand.
+        // A log sitting on the deck can be a little behind the floor hit.
+        internal static ShipItem PieceInFront(ShipItem held, Ray ray, out float distance)
         {
             int count = Physics.RaycastNonAlloc(
                 ray,
@@ -129,6 +129,9 @@ namespace Dizzy.FirewoodBundle
             for (int i = 0; i < count; i++)
             {
                 float hitDistance = Hits[i].distance;
+                if (IsHeldCollider(held, Hits[i].collider))
+                    continue;
+
                 ShipItem ship = Resolve(Hits[i].collider);
                 if (ship == held)
                     continue;
@@ -146,9 +149,27 @@ namespace Dizzy.FirewoodBundle
                     blockedAt = hitDistance;
             }
 
-            if (wood == null || woodDistance > blockedAt + 0.02f)
+            if (wood == null || woodDistance > blockedAt + 0.45f)
+            {
+                distance = 0f;
                 return null;
+            }
+
+            distance = woodDistance;
             return wood;
+        }
+
+        private static bool IsHeldCollider(ShipItem held, Collider collider)
+        {
+            if (held == null || collider == null)
+                return false;
+            if (collider.transform == held.transform || collider.transform.IsChildOf(held.transform))
+                return true;
+
+            ItemRigidbody body = held.itemRigidbodyC;
+            if (body == null)
+                return false;
+            return collider.transform == body.transform || collider.transform.IsChildOf(body.transform);
         }
 
         internal static bool TryGlue(ShipItem held)
@@ -160,7 +181,8 @@ namespace Dizzy.FirewoodBundle
             Ray ray = MakeRay(
                 pointer.debugEditorPointer,
                 new Ray(pointer.transform.position, pointer.transform.forward));
-            ShipItem target = PieceInFront(held, ray);
+            float distance;
+            ShipItem target = PieceInFront(held, ray, out distance);
             if (!CanTarget(held, target))
                 return false;
 
@@ -421,12 +443,12 @@ namespace Dizzy.FirewoodBundle
             int columns = Mathf.CeilToInt(Mathf.Sqrt(count));
             int rows = Mathf.CeilToInt(count / (float)columns);
             int placed = 0;
-            float rowSpan = (rows - 1) * pitch;
             for (int row = 0; row < rows && placed < count; row++)
             {
                 int inRow = Mathf.Min(columns, count - placed);
                 float rowWidth = (inRow - 1) * pitch;
-                float y = row * pitch - rowSpan * 0.5f;
+                // The bottom row stays on the nail point. Extra rows stack upward.
+                float y = row * pitch;
                 for (int column = 0; column < inRow; column++)
                 {
                     float x = column * pitch - rowWidth * 0.5f;

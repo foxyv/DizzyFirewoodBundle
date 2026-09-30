@@ -56,6 +56,10 @@ namespace Dizzy.FirewoodBundle
             if (item.itemRigidbodyC != null)
                 item.itemRigidbodyC.UpdateMass();
 
+            // A single log is not a nailable item, so the hammer cannot release it.
+            if (item.nailed)
+                item.nailed = false;
+
             Mesh box;
             if (BoxMeshes.TryGetValue(id, out box))
             {
