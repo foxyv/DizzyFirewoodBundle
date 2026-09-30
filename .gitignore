@@ -1,0 +1,12 @@
+bin/
+obj/
+*.user
+lib/
+*.dll
+!packages/**/*.dll
+dist/
+*.log
+.vs/
+.idea/
+Thumbs.db
+Desktop.ini
