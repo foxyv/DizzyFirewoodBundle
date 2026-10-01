@@ -749,8 +749,17 @@ namespace Dizzy.FirewoodBundle
                 baseMass = 1f;
             item.mass = baseMass * count;
 
-            if (item.itemRigidbodyC != null)
-                item.itemRigidbodyC.UpdateMass();
+            ItemRigidbody body = item.itemRigidbodyC;
+            if (body == null)
+                return;
+
+            // Load runs before ItemRigidbody.Start, so the Rigidbody is not created yet.
+            // UpdateMass would throw and abort the boat's item spawn, which then retries forever.
+            var joint = AccessTools.Field(typeof(ItemRigidbody), "rigidbody");
+            if (joint == null || joint.GetValue(body) == null)
+                return;
+
+            body.UpdateMass();
         }
 
         private static void ApplyHoldDistance(ShipItem item, List<Vector3> centers, int longAxis, float cross)

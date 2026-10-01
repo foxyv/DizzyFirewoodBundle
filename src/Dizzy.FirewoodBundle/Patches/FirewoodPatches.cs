@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using HarmonyLib;
 using UnityEngine;
 
@@ -44,24 +45,29 @@ namespace Dizzy.FirewoodBundle
                 return;
             }
 
-            if (___pointedAtButton != null && !FirewoodPieces.IsPiece(___pointedAtButton))
+            // A bundle cannot be set onto another object. A single log can, but only
+            // onto a surface that accepts placed items. Any other highlight blocks the drop.
+            if (!held.big && ___pointedAtButton != null && held.AllowOnItemClick(___pointedAtButton))
                 return;
 
-            float distance;
-            GoPointerButton surface = SurfaceBehind(___heldItem, ___debugEditorPointer, ___raycastRay, out distance);
             if (___pointedAtButton != null)
                 ___pointedAtButton.ForceUnlook();
 
-            if (surface == null)
+            if (!held.big)
             {
-                ___pointedAtButton = null;
-                ___currentLookDistance = 0f;
-                return;
+                float placeDistance;
+                GoPointerButton surface = SurfaceBehind(___heldItem, ___debugEditorPointer, ___raycastRay, out placeDistance);
+                if (surface != null)
+                {
+                    ___pointedAtButton = surface;
+                    surface.Look(__instance);
+                    ___currentLookDistance = placeDistance;
+                    return;
+                }
             }
 
-            ___pointedAtButton = surface;
-            surface.Look(__instance);
-            ___currentLookDistance = distance;
+            ___pointedAtButton = null;
+            ___currentLookDistance = 0f;
         }
 
         // Empty hands ignore nailed items unless they are a crate, bottle, or bed.
@@ -173,6 +179,67 @@ namespace Dizzy.FirewoodBundle
             if (held.AllowOnItemClick(button))
                 return true;
             return button.GetComponent<ShipItem>() == null && button.GetComponent<GPButtonBed>() == null;
+        }
+    }
+
+    [HarmonyPatch(typeof(PickupableItemCollisionChecker), "Update")]
+    internal static class FirewoodDropOverlapPatch
+    {
+        // The deck is ignored, so a log drops on the boat. The island is not.
+        // Leaving the island often never sends an exit, so the overlap stays
+        // after you come back aboard and the drop is refused.
+        private static void Postfix(PickupableItemCollisionChecker __instance, ShipItem ___item)
+        {
+            if (!FirewoodBundleConfig.IsEnabled || ___item == null || ___item.held == null)
+                return;
+            if (!FirewoodPieces.IsPiece(___item))
+                return;
+
+            var listField = AccessTools.Field(typeof(PickupableItemCollisionChecker), "collidedCols");
+            var distanceField = AccessTools.Field(typeof(PickupableItemCollisionChecker), "currentDecolDistance");
+            if (listField == null)
+                return;
+
+            var collided = listField.GetValue(__instance) as List<Collider>;
+            if (collided == null)
+                return;
+
+            Collider self = __instance.GetComponent<Collider>();
+            float penetration = 0f;
+            int live = 0;
+            for (int i = collided.Count - 1; i >= 0; i--)
+            {
+                Collider other = collided[i];
+                Vector3 direction;
+                float distance;
+                if (other == null
+                    || self == null
+                    || !other.enabled
+                    || !other.gameObject.activeInHierarchy
+                    || !Physics.ComputePenetration(
+                        self,
+                        __instance.transform.position,
+                        __instance.transform.rotation,
+                        other,
+                        other.transform.position,
+                        other.transform.rotation,
+                        out direction,
+                        out distance)
+                    || distance <= 0f)
+                {
+                    collided.RemoveAt(i);
+                    continue;
+                }
+
+                live++;
+                if (distance > penetration)
+                    penetration = distance;
+            }
+
+            __instance.collisions = live;
+            if (distanceField != null)
+                distanceField.SetValue(__instance, penetration);
+            __instance.allowObstructedDropping = live == 0 || penetration < 0.06f;
         }
     }
 
@@ -355,9 +422,16 @@ namespace Dizzy.FirewoodBundle
     {
         private static void Postfix(SaveablePrefab __instance)
         {
-            ShipItem item = __instance.GetComponent<ShipItem>();
-            if (FirewoodPieces.CountOf(item) > 1)
-                FirewoodBundleBuilder.Apply(item);
+            try
+            {
+                ShipItem item = __instance.GetComponent<ShipItem>();
+                if (FirewoodPieces.CountOf(item) > 1)
+                    FirewoodBundleBuilder.Apply(item);
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogError("Could not rebuild a loaded firewood bundle: " + ex.Message);
+            }
         }
     }
 
