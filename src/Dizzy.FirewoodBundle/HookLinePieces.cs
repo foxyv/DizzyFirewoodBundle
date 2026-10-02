@@ -121,18 +121,15 @@ namespace Dizzy.FirewoodBundle
             return value is bool occupied && occupied;
         }
 
-        internal static bool LineClaims(ShipItemLampHook lamp)
-        {
-            return lamp != null && ClaimedLamps.Contains(lamp.GetInstanceID());
-        }
-
         internal static void ClaimLamp(ShipItemLampHook lamp)
         {
             if (lamp == null || LampOccupiedField == null)
                 return;
             LampOccupiedField.SetValue(lamp, true);
             ClaimedLamps.Add(lamp.GetInstanceID());
-            lamp.lookText = "occupied";
+            lamp.unclickable = true;
+            lamp.lookText = "";
+            lamp.ForceUnlook();
         }
 
         internal static void FreeLamp(ShipItemLampHook lamp)
@@ -142,7 +139,7 @@ namespace Dizzy.FirewoodBundle
             if (!ClaimedLamps.Remove(lamp.GetInstanceID()))
                 return;
             LampOccupiedField.SetValue(lamp, false);
-            lamp.lookText = "";
+            lamp.unclickable = false;
             lamp.UpdateLookText();
         }
 

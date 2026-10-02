@@ -734,10 +734,6 @@ namespace Dizzy.FirewoodBundle
                 __instance.lookText = HookLinePieces.LookText(HookLinePieces.CountOf(__instance));
                 __instance.description = "";
             }
-
-            ShipItemLampHook lamp = __instance as ShipItemLampHook;
-            if (lamp != null && HookLinePieces.LineClaims(lamp))
-                __instance.lookText = "occupied";
         }
     }
 
