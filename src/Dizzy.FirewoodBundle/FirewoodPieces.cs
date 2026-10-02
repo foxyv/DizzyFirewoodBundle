@@ -17,7 +17,8 @@ namespace Dizzy.FirewoodBundle
         internal static bool IsPiece(Component component)
         {
             ShipItem ship = AsShip(component);
-            return ship != null && ship.name == ItemName;
+            // A cargo crate of firewood uses the same name as a loose log.
+            return ship != null && ship.name == ItemName && !(ship is ShipItemCrate);
         }
 
         internal static ShipItem AsShip(Component component)
@@ -203,7 +204,7 @@ namespace Dizzy.FirewoodBundle
             {
                 FirewoodBundleBuilder.Apply(held);
                 target.ForceUnlook();
-                target.DestroyItem();
+                Consume(target);
             }
             catch (System.Exception ex)
             {
@@ -216,6 +217,46 @@ namespace Dizzy.FirewoodBundle
             return true;
         }
 
+        // ExitBoat unparents the log's physics body. On a heeling, moving ship that body
+        // is left in the hull's path and the boat plays an impact, the same bang as cutting a fish.
+        private static void Silence(ShipItem item)
+        {
+            if (item == null)
+                return;
+
+            ItemRigidbody body = item.itemRigidbodyC;
+            if (body == null)
+                return;
+
+            Rigidbody joint = body.GetBody();
+            if (joint != null)
+            {
+                if (!joint.isKinematic)
+                {
+                    joint.velocity = Vector3.zero;
+                    joint.angularVelocity = Vector3.zero;
+                }
+                joint.detectCollisions = false;
+                joint.isKinematic = true;
+            }
+
+            Collider[] cols = body.GetComponentsInChildren<Collider>();
+            for (int i = 0; i < cols.Length; i++)
+            {
+                if (cols[i] != null)
+                    cols[i].enabled = false;
+            }
+        }
+
+        private static void Consume(ShipItem item)
+        {
+            if (item == null)
+                return;
+            Silence(item);
+            item.ForceUnlook();
+            item.DestroyItem();
+        }
+
         // The pile stays where it is. The wood in hand is what gets used up.
         private static bool AddHeldToPile(ShipItem held, ShipItem pile, GoPointer pointer, int count)
         {
@@ -224,9 +265,9 @@ namespace Dizzy.FirewoodBundle
             try
             {
                 FirewoodBundleBuilder.Apply(pile);
+                Silence(held);
                 pointer.DropItem();
-                held.ForceUnlook();
-                held.DestroyItem();
+                Consume(held);
             }
             catch (System.Exception ex)
             {

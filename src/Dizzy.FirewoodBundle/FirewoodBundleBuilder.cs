@@ -13,6 +13,7 @@ namespace Dizzy.FirewoodBundle
         private const string BoxMeshName = "FirewoodBundleBox";
 
         private static readonly Dictionary<int, int> Stamps = new Dictionary<int, int>();
+        private static readonly Dictionary<int, int> HullStamps = new Dictionary<int, int>();
         private static readonly Dictionary<int, Mesh> BoxMeshes = new Dictionary<int, Mesh>();
         private static Material _stringMaterial;
 
@@ -55,6 +56,7 @@ namespace Dizzy.FirewoodBundle
 
             if (item.itemRigidbodyC != null)
                 item.itemRigidbodyC.UpdateMass();
+            QuietHull(item);
 
             // A single log is not a nailable item, so the hammer cannot release it.
             if (item.nailed)
@@ -97,6 +99,7 @@ namespace Dizzy.FirewoodBundle
                 return;
             int id = item.GetInstanceID();
             Stamps.Remove(id);
+            HullStamps.Remove(id);
             Mesh mesh;
             if (BoxMeshes.TryGetValue(id, out mesh))
             {
@@ -169,6 +172,9 @@ namespace Dizzy.FirewoodBundle
             ApplyMass(item, count);
             ApplyHoldDistance(item, centers, longAxis, cross);
             FitColliders(item, centers, mesh);
+            // Growing the physics shape while the hull is heeled over shoves the boat.
+            // Ignore the hull capsule until the bundle is clear of it.
+            QuietHull(item);
         }
 
         private static void AdoptTwoHandedHold(ShipItem item)
@@ -768,6 +774,99 @@ namespace Dizzy.FirewoodBundle
             float baseDistance = prefab != null ? prefab.holdDistance : item.holdDistance;
             float extra = Mathf.Max(0f, FirewoodPieces.CrossDiameter(centers, longAxis, cross) * 0.5f - cross * 0.5f);
             item.holdDistance = baseDistance + extra;
+        }
+
+        private static void QuietHull(ShipItem item)
+        {
+            if (item == null)
+                return;
+
+            ItemRigidbody body = item.itemRigidbodyC;
+            Collider hull = HullOf(item);
+            if (body == null || hull == null)
+                return;
+
+            IgnoreHull(body, hull, true);
+
+            int id = item.GetInstanceID();
+            int stamp = 1;
+            int current;
+            if (HullStamps.TryGetValue(id, out current))
+                stamp = current + 1;
+            HullStamps[id] = stamp;
+            if (Plugin.Instance != null)
+                Plugin.Instance.StartCoroutine(ReleaseHull(item, body, hull, id, stamp));
+        }
+
+        private static IEnumerator ReleaseHull(ShipItem item, ItemRigidbody body, Collider hull, int id, int stamp)
+        {
+            while (true)
+            {
+                yield return new WaitForFixedUpdate();
+                int current;
+                if (item == null || body == null || hull == null)
+                    yield break;
+                if (!HullStamps.TryGetValue(id, out current) || current != stamp)
+                    yield break;
+                if (OverlapsHull(body, hull))
+                    continue;
+
+                IgnoreHull(body, hull, false);
+                if (HullStamps.TryGetValue(id, out current) && current == stamp)
+                    HullStamps.Remove(id);
+                yield break;
+            }
+        }
+
+        private static Collider HullOf(ShipItem item)
+        {
+            if (item == null || item.currentActualBoat == null)
+                return null;
+
+            Transform boat = item.currentActualBoat;
+            BoatDamage damage = boat.GetComponent<BoatDamage>();
+            if (damage == null && boat.parent != null)
+                damage = boat.parent.GetComponent<BoatDamage>();
+            if (damage == null)
+                return null;
+            return damage.GetComponent<CapsuleCollider>();
+        }
+
+        private static void IgnoreHull(ItemRigidbody body, Collider hull, bool ignore)
+        {
+            Collider[] cols = body.GetComponentsInChildren<Collider>();
+            for (int i = 0; i < cols.Length; i++)
+            {
+                Collider col = cols[i];
+                if (col != null && col != hull && col.enabled)
+                    Physics.IgnoreCollision(col, hull, ignore);
+            }
+        }
+
+        private static bool OverlapsHull(ItemRigidbody body, Collider hull)
+        {
+            Collider[] cols = body.GetComponentsInChildren<Collider>();
+            for (int i = 0; i < cols.Length; i++)
+            {
+                Collider col = cols[i];
+                if (col == null || !col.enabled || col.isTrigger || col == hull)
+                    continue;
+
+                Vector3 direction;
+                float distance;
+                if (Physics.ComputePenetration(
+                    col,
+                    col.transform.position,
+                    col.transform.rotation,
+                    hull,
+                    hull.transform.position,
+                    hull.transform.rotation,
+                    out direction,
+                    out distance) && distance > 0.0001f)
+                    return true;
+            }
+
+            return false;
         }
 
         private static void FitColliders(ShipItem item, List<Vector3> centers, Mesh mesh)
