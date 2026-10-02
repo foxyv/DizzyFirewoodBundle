@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
 
@@ -421,64 +420,6 @@ namespace Dizzy.FirewoodBundle
             }
 
             return true;
-        }
-    }
-
-    // Right-click with the hammer nails whatever it is pointing at. A lamp hook
-    // is where the hammer hangs, and nailing the hook leaves it occupied so the
-    // hang never sticks.
-    [HarmonyPatch(typeof(ShipItemHammer), nameof(ShipItemHammer.OnAltActivate))]
-    [HarmonyPriority(Priority.Last)]
-    internal static class FirewoodHammerHookPatch
-    {
-        private static bool Prefix(ShipItemHammer __instance)
-        {
-            if (!FirewoodBundleConfig.IsEnabled || __instance == null || __instance.held == null)
-                return true;
-
-            ShipItem hook = __instance.held.GetPointedAtItem();
-            if (hook == null || hook.GetComponent<ShipItemLampHook>() == null)
-                return true;
-
-            ReleaseStuckHang(hook, __instance);
-            if (hook.nailed)
-                hook.nailed = false;
-            if (hook.OnItemClick(__instance))
-            {
-                GoPointer pointer = __instance.held;
-                __instance.OnDrop();
-                if (pointer != null)
-                    pointer.DropItem();
-            }
-
-            return false;
-        }
-
-        private static void ReleaseStuckHang(ShipItem hook, ShipItemHammer hammer)
-        {
-            Component holder = hook.GetComponent("AttachableItemHolder");
-            if (holder == null)
-                return;
-
-            PropertyInfo attached = holder.GetType().GetProperty("AttachedItem");
-            if (attached == null || !ReferenceEquals(attached.GetValue(holder, null), hammer))
-                return;
-
-            MethodInfo detach = holder.GetType().GetMethod(
-                "DetachItem",
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            if (detach != null)
-                detach.Invoke(holder, null);
-        }
-    }
-
-    [HarmonyPatch(typeof(ShipItemHammer), nameof(ShipItemHammer.OnAltHeld))]
-    internal static class FirewoodHammerHookNailPatch
-    {
-        private static void Prefix(ref ShipItem ___currentlyNailedItem)
-        {
-            if (___currentlyNailedItem != null && ___currentlyNailedItem.GetComponent<ShipItemLampHook>() != null)
-                ___currentlyNailedItem = null;
         }
     }
 
