@@ -126,10 +126,12 @@ namespace Dizzy.FirewoodBundle
             if (lamp == null || LampOccupiedField == null)
                 return;
             LampOccupiedField.SetValue(lamp, true);
-            ClaimedLamps.Add(lamp.GetInstanceID());
             lamp.unclickable = true;
-            lamp.lookText = "";
-            lamp.ForceUnlook();
+            if (ClaimedLamps.Add(lamp.GetInstanceID()))
+            {
+                lamp.lookText = "";
+                lamp.ForceUnlook();
+            }
         }
 
         internal static void FreeLamp(ShipItemLampHook lamp)

@@ -60,6 +60,8 @@ namespace Dizzy.FirewoodBundle
 
         internal static bool CanTarget(ShipItem held, ShipItem target)
         {
+            if (!FirewoodBundleConfig.IsEnabled)
+                return false;
             if (!IsPiece(held) || !IsPiece(target) || held == target)
                 return false;
             if (!held.sold || !target.sold || target.unclickable)

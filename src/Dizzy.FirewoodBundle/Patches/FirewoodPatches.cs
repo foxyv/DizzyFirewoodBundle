@@ -47,6 +47,10 @@ namespace Dizzy.FirewoodBundle
                         ___currentLookDistance = 0f;
                     }
                 }
+                if (FirewoodBundleConfig.HooksAreEnabled
+                    && ___heldItem != null
+                    && ___heldItem.GetComponent<ShipItemHammer>() != null)
+                    AimAtNailableLamp(__instance, ___debugEditorPointer, ___raycastRay, ref ___pointedAtButton, ref ___currentLookDistance);
                 if (___heldItem == null)
                 {
                     if (FirewoodBundleConfig.IsEnabled && ___pointedAtButton == null)
@@ -195,6 +199,76 @@ namespace Dizzy.FirewoodBundle
             pointedAtButton = line;
             line.Look(pointer);
             currentLookDistance = distance;
+        }
+
+        // A line makes its lamp hook ignore ordinary looks. The hammer still needs that
+        // hook so it can be nailed while the line stays hung.
+        private static void AimAtNailableLamp(
+            GoPointer pointer,
+            bool debugEditorPointer,
+            Ray raycastRay,
+            ref GoPointerButton pointedAtButton,
+            ref float currentLookDistance)
+        {
+            Ray ray = FirewoodPieces.MakeRay(debugEditorPointer, raycastRay);
+            int count = Physics.RaycastNonAlloc(
+                ray,
+                Hits,
+                FirewoodPieces.Reach,
+                FirewoodPieces.LayerMask,
+                QueryTriggerInteraction.Collide);
+            float nearestAny = float.MaxValue;
+            float nearestLamp = float.MaxValue;
+            ShipItemLampHook lampHit = null;
+            ShipItem nearestShip = null;
+            float nearestShipDistance = float.MaxValue;
+            for (int i = 0; i < count; i++)
+            {
+                float distance = Hits[i].distance;
+                if (distance < nearestAny)
+                    nearestAny = distance;
+
+                ShipItemLampHook lamp = HookLinePieces.LampOf(Hits[i].collider);
+                if (lamp != null && lamp.unclickable && distance < nearestLamp)
+                {
+                    nearestLamp = distance;
+                    lampHit = lamp;
+                }
+
+                GoPointerButton button = ButtonOf(Hits[i].collider);
+                ShipItem ship = button as ShipItem;
+                if (ship != null && distance < nearestShipDistance)
+                {
+                    nearestShip = ship;
+                    nearestShipDistance = distance;
+                }
+            }
+
+            ShipItemLampHook target = null;
+            float distanceToTarget = 0f;
+            if (lampHit != null && nearestLamp <= nearestAny + 0.001f)
+            {
+                target = lampHit;
+                distanceToTarget = nearestLamp;
+            }
+            else if (nearestShip != null
+                && HookLinePieces.IsLine(nearestShip)
+                && HookLinePieces.IsHanging(nearestShip)
+                && nearestShipDistance <= nearestAny + 0.001f)
+            {
+                HangableItem hang = nearestShip.GetComponent<HangableItem>();
+                target = HookLinePieces.LampOf(HookLinePieces.CurrentHook(hang));
+                distanceToTarget = nearestShipDistance;
+            }
+
+            if (target == null || !target.unclickable)
+                return;
+
+            if (pointedAtButton != null && pointedAtButton != target)
+                pointedAtButton.ForceUnlook();
+            pointedAtButton = target;
+            target.Look(pointer);
+            currentLookDistance = distanceToTarget;
         }
 
         // Hanging turns the physics colliders off. A line on a table keeps them, on the

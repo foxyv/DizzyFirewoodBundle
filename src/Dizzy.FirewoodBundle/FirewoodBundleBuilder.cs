@@ -10,6 +10,7 @@ namespace Dizzy.FirewoodBundle
     {
         private const string StickName = "FirewoodBundleStick";
         private const string StringName = "FirewoodBundleString";
+        private const string KnotName = "FirewoodBundleKnot";
         private const string BoxMeshName = "FirewoodBundleBox";
 
         private static readonly Dictionary<int, int> Stamps = new Dictionary<int, int>();
@@ -158,6 +159,9 @@ namespace Dizzy.FirewoodBundle
                 Renderer tie = CreateString(item, centers, mesh, longAxis, cross, source);
                 if (tie != null)
                     renderers.Add(tie);
+                Renderer knot = CreateKnot(item, centers, mesh, longAxis, cross);
+                if (knot != null)
+                    renderers.Add(knot);
                 IncludeInLod(item, renderers);
             }
 
@@ -184,7 +188,10 @@ namespace Dizzy.FirewoodBundle
                 return;
 
             Vector3 localPos = pointer.transform.InverseTransformPoint(item.transform.position);
-            Quaternion localRot = Quaternion.Inverse(pointer.transform.rotation) * item.transform.rotation;
+            // A small log is already pitched by heldRotationOffset. A two-handed hold
+            // adds that pitch again, which tips the stack out away from the player.
+            Quaternion pitch = Quaternion.Euler(item.heldRotationOffset, 0f, 0f);
+            Quaternion localRot = Quaternion.Inverse(pitch) * (Quaternion.Inverse(pointer.transform.rotation) * item.transform.rotation);
             SetPointerField(pointer, "bigItemLocalPos", localPos);
             SetPointerField(pointer, "decolLocalPos", localPos);
             SetPointerField(pointer, "bigItemLocalRot", localRot);
@@ -204,9 +211,9 @@ namespace Dizzy.FirewoodBundle
             for (int i = item.transform.childCount - 1; i >= 0; i--)
             {
                 Transform child = item.transform.GetChild(i);
-                if (child.name != StickName && child.name != StringName)
+                if (child.name != StickName && child.name != StringName && child.name != KnotName)
                     continue;
-                if (child.name == StringName)
+                if (child.name == StringName || child.name == KnotName)
                     ReleaseStringMesh(child);
                 Object.Destroy(child.gameObject);
             }
@@ -259,7 +266,7 @@ namespace Dizzy.FirewoodBundle
             for (int i = 0; i < transform.childCount; i++)
             {
                 Transform child = transform.GetChild(i);
-                if (child.name != StickName && child.name != StringName)
+                if (child.name != StickName && child.name != StringName && child.name != KnotName)
                     continue;
 
                 Outline outline = child.GetComponent<Outline>();
@@ -321,6 +328,88 @@ namespace Dizzy.FirewoodBundle
 
             Outline rootOutline = item.GetComponent<Outline>();
             Outline outline = tie.AddComponent<Outline>();
+            outline.enabled = false;
+            if (rootOutline != null)
+            {
+                outline.color = rootOutline.color;
+                outline.eraseRenderer = rootOutline.eraseRenderer;
+                outline.originalLayer = rootOutline.originalLayer;
+            }
+
+            return renderer;
+        }
+
+        // Rows grow along the axis after the log's length. Two cord ends stick up
+        // from that face in a V so the upright side of the bundle is easy to see.
+        private static Renderer CreateKnot(
+            ShipItem item,
+            List<Vector3> centers,
+            Mesh logMesh,
+            int longAxis,
+            float cross)
+        {
+            if (item == null || centers == null || centers.Count < 2 || logMesh == null)
+                return null;
+
+            Material material = StringMaterial();
+            if (material == null)
+                return null;
+
+            int axisA = (longAxis + 1) % 3;
+            int upAxis = (longAxis + 2) % 3;
+            float topRow = float.MinValue;
+            for (int i = 0; i < centers.Count; i++)
+                topRow = Mathf.Max(topRow, centers[i][upAxis]);
+
+            float minA = float.MaxValue;
+            float maxA = float.MinValue;
+            float minLong = float.MaxValue;
+            float maxLong = float.MinValue;
+            for (int i = 0; i < centers.Count; i++)
+            {
+                if (centers[i][upAxis] < topRow - 0.0001f)
+                    continue;
+                minA = Mathf.Min(minA, centers[i][axisA]);
+                maxA = Mathf.Max(maxA, centers[i][axisA]);
+                minLong = Mathf.Min(minLong, centers[i][longAxis]);
+                maxLong = Mathf.Max(maxLong, centers[i][longAxis]);
+            }
+
+            float cord = Mathf.Clamp(cross * 0.07f, 0.004f, 0.009f);
+            float rise = Mathf.Max(cross * 0.9f, 0.05f);
+            float spread = rise * 0.42f;
+            Vector3 up = Vector3.zero;
+            up[upAxis] = 1f;
+            Vector3 along = Vector3.zero;
+            along[longAxis] = 1f;
+            Vector3 origin = Vector3.zero;
+            origin[axisA] = (minA + maxA) * 0.5f;
+            origin[longAxis] = (minLong + maxLong) * 0.5f;
+            origin[upAxis] = topRow + logMesh.bounds.max[upAxis];
+            var left = new List<Vector3> { origin, origin - along * spread + up * rise };
+            var right = new List<Vector3> { origin, origin + along * spread + up * rise };
+            Mesh knotMesh = JoinCords(
+                CordMesh(left, axisA, cord, false, KnotName),
+                CordMesh(right, axisA, cord, false, KnotName));
+            if (knotMesh == null)
+                return null;
+
+            var knot = new GameObject(KnotName);
+            knot.layer = item.gameObject.layer;
+            knot.transform.SetParent(item.transform, false);
+            knot.transform.localPosition = Vector3.zero;
+            knot.transform.localRotation = Quaternion.identity;
+            knot.transform.localScale = Vector3.one;
+
+            MeshFilter filter = knot.AddComponent<MeshFilter>();
+            filter.sharedMesh = knotMesh;
+            MeshRenderer renderer = knot.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+
+            Outline rootOutline = item.GetComponent<Outline>();
+            Outline outline = knot.AddComponent<Outline>();
             outline.enabled = false;
             if (rootOutline != null)
             {
@@ -607,38 +696,39 @@ namespace Dizzy.FirewoodBundle
             return point;
         }
 
-        private static Mesh CordMesh(List<Vector3> loop, int longAxis, float radius)
+        private static Mesh CordMesh(List<Vector3> loop, int frameAxis, float radius, bool closed = true, string meshName = null)
         {
             int count = loop.Count;
-            if (count < 3)
+            if (count < (closed ? 3 : 2))
                 return null;
 
             const int sides = 6;
-            Vector3 along = Vector3.zero;
-            along[longAxis] = 1f;
+            int segments = closed ? count : count - 1;
+            Vector3 frame = Vector3.zero;
+            frame[frameAxis] = 1f;
             var vertices = new Vector3[count * sides];
             var normals = new Vector3[count * sides];
-            var triangles = new int[count * sides * 6];
+            var triangles = new int[segments * sides * 6];
             Vector3 outward = Vector3.zero;
 
             for (int i = 0; i < count; i++)
             {
-                Vector3 previous = loop[(i + count - 1) % count];
-                Vector3 next = loop[(i + 1) % count];
-                Vector3 tangent = next - previous;
+                int previousIndex = closed ? (i + count - 1) % count : Mathf.Max(0, i - 1);
+                int nextIndex = closed ? (i + 1) % count : Mathf.Min(count - 1, i + 1);
+                Vector3 tangent = loop[nextIndex] - loop[previousIndex];
                 if (tangent.sqrMagnitude > 0.0000001f)
                     tangent.Normalize();
                 else
-                    tangent = along;
+                    tangent = frame;
 
-                Vector3 side = Vector3.Cross(tangent, along);
+                Vector3 side = Vector3.Cross(tangent, frame);
                 if (side.sqrMagnitude > 0.0000001f)
                     outward = side.normalized;
 
                 for (int s = 0; s < sides; s++)
                 {
                     float angle = s * Mathf.PI * 2f / sides;
-                    Vector3 normal = outward * Mathf.Cos(angle) + along * Mathf.Sin(angle);
+                    Vector3 normal = outward * Mathf.Cos(angle) + frame * Mathf.Sin(angle);
                     int index = i * sides + s;
                     normals[index] = normal;
                     vertices[index] = loop[i] + normal * radius;
@@ -646,9 +736,9 @@ namespace Dizzy.FirewoodBundle
             }
 
             int t = 0;
-            for (int i = 0; i < count; i++)
+            for (int i = 0; i < segments; i++)
             {
-                int next = (i + 1) % count;
+                int next = closed ? (i + 1) % count : i + 1;
                 for (int s = 0; s < sides; s++)
                 {
                     int s1 = (s + 1) % sides;
@@ -666,7 +756,42 @@ namespace Dizzy.FirewoodBundle
             }
 
             var mesh = new Mesh();
-            mesh.name = StringName;
+            mesh.name = string.IsNullOrEmpty(meshName) ? StringName : meshName;
+            mesh.vertices = vertices;
+            mesh.normals = normals;
+            mesh.triangles = triangles;
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private static Mesh JoinCords(Mesh first, Mesh second)
+        {
+            if (first == null)
+                return second;
+            if (second == null)
+                return first;
+
+            Vector3[] firstVertices = first.vertices;
+            Vector3[] secondVertices = second.vertices;
+            Vector3[] firstNormals = first.normals;
+            Vector3[] secondNormals = second.normals;
+            int[] firstTriangles = first.triangles;
+            int[] secondTriangles = second.triangles;
+            var vertices = new Vector3[firstVertices.Length + secondVertices.Length];
+            var normals = new Vector3[vertices.Length];
+            var triangles = new int[firstTriangles.Length + secondTriangles.Length];
+            firstVertices.CopyTo(vertices, 0);
+            secondVertices.CopyTo(vertices, firstVertices.Length);
+            firstNormals.CopyTo(normals, 0);
+            secondNormals.CopyTo(normals, firstNormals.Length);
+            firstTriangles.CopyTo(triangles, 0);
+            for (int i = 0; i < secondTriangles.Length; i++)
+                triangles[firstTriangles.Length + i] = secondTriangles[i] + firstVertices.Length;
+
+            Object.Destroy(first);
+            Object.Destroy(second);
+            var mesh = new Mesh();
+            mesh.name = KnotName;
             mesh.vertices = vertices;
             mesh.normals = normals;
             mesh.triangles = triangles;
@@ -711,7 +836,7 @@ namespace Dizzy.FirewoodBundle
             for (int i = 0; i < transform.childCount; i++)
             {
                 Transform child = transform.GetChild(i);
-                if (child.name == StringName)
+                if (child.name == StringName || child.name == KnotName)
                     ReleaseStringMesh(child);
             }
         }
@@ -722,7 +847,9 @@ namespace Dizzy.FirewoodBundle
                 return;
 
             MeshFilter filter = child.GetComponent<MeshFilter>();
-            if (filter != null && filter.sharedMesh != null && filter.sharedMesh.name == StringName)
+            if (filter != null
+                && filter.sharedMesh != null
+                && (filter.sharedMesh.name == StringName || filter.sharedMesh.name == KnotName))
                 Object.Destroy(filter.sharedMesh);
         }
 

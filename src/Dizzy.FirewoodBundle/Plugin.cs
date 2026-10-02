@@ -37,7 +37,7 @@ namespace Dizzy.FirewoodBundle
 
             Log.LogInfo(
                 PluginName + " v" + PluginVersion
-                + " loaded (Enabled=" + FirewoodBundleConfig.Enabled.Value
+                + " loaded (Stack Firewood=" + FirewoodBundleConfig.Enabled.Value
                 + ", MaxPieces=" + FirewoodBundleConfig.MaxPieces.Value
                 + ", Hooks=" + FirewoodBundleConfig.HooksEnabled.Value
                 + ", MaxHooks=" + FirewoodBundleConfig.MaxHooks.Value

@@ -57,9 +57,9 @@ namespace Dizzy.FirewoodBundle
         {
             Enabled = config.Bind(
                 "General",
-                "Enabled",
-                true,
-                "Hold a piece of firewood and right-click another piece to glue them into a bundle. Keep adding pieces until the bundle holds MaxPieces.");
+                "Stack Firewood",
+                LegacyBool(config, "General", "Enabled", true),
+                "Glue logs into a bundle when you right-click one log with another. Turn this off to leave firewood alone. Fishing hooks keep working.");
 
             MaxPieces = config.Bind(
                 "General",
@@ -110,6 +110,17 @@ namespace Dizzy.FirewoodBundle
                 new ConfigDescription(
                     "Multiplier for how far the hooks hang below the top of the string. 1 is the usual length. Lower shortens the hanger. Higher drops the hooks farther down.",
                     new AcceptableValueRange<float>(0.4f, 3f)));
+        }
+
+        private static bool LegacyBool(ConfigFile config, string section, string key, bool fallback)
+        {
+            ConfigEntry<bool> oldEntry;
+            if (!config.TryGetEntry(section, key, out oldEntry))
+                return fallback;
+
+            fallback = oldEntry.Value;
+            config.Remove(oldEntry.Definition);
+            return fallback;
         }
 
         private static float LegacyFloat(ConfigFile config, string key, float fallback)
