@@ -68,15 +68,16 @@ namespace Dizzy.FirewoodBundle
             side[sideAxis] = 1f;
             side = rotation * side;
 
-            // Hooks sit on a bowed bottom. The string rises from both ends to the origin, which is the hang point.
-            float spacing = Mathf.Max(mesh.bounds.size[sideAxis] * 1.8f, 0.016f);
+            // Hooks sit close together on a bowed bottom, each one a little off the perfect arc.
+            // The string rises from both ends to the origin, which is the hang point.
+            float spacing = Mathf.Max(mesh.bounds.size[sideAxis] * 1.2f, 0.013f);
             float span = (count - 1) * spacing;
             float half = span * 0.5f;
             float sag = Mathf.Max(0.012f, span * 0.15f);
             float rise = Mathf.Max(0.055f, half * 0.95f);
             var knots = new Vector3[count];
             for (int i = 0; i < count; i++)
-                knots[i] = ArcKnot(i, count, side, half, rise, sag);
+                knots[i] = ArcKnot(i, count, side, half, rise, sag) + Wobble(i, side, spacing);
 
             var renderers = new List<Renderer>();
             Bounds rack = new Bounds(Vector3.zero, Vector3.zero);
@@ -85,9 +86,10 @@ namespace Dizzy.FirewoodBundle
             hasRack = true;
             for (int i = 0; i < count; i++)
             {
-                Vector3 place = knots[i] - rotation * eye;
-                renderers.Add(CreateHook(item, mesh, source.sharedMaterials, place, rotation, source));
-                EncapsulateMesh(ref rack, ref hasRack, mesh, place, rotation);
+                Quaternion hookRotation = rotation * Quaternion.Euler(WobbleAngle(i, 4, 10f), WobbleAngle(i, 5, 24f), WobbleAngle(i, 6, 14f));
+                Vector3 place = knots[i] - hookRotation * eye;
+                renderers.Add(CreateHook(item, mesh, source.sharedMaterials, place, hookRotation, source));
+                EncapsulateMesh(ref rack, ref hasRack, mesh, place, hookRotation);
             }
 
             if (count == 1)
@@ -288,6 +290,34 @@ namespace Dizzy.FirewoodBundle
             float nx = half > 0.0001f ? along / half : 0f;
             float drop = rise + sag * (1f - nx * nx);
             return side * along + Vector3.down * drop;
+        }
+
+        private static Vector3 Wobble(int index, Vector3 side, float spacing)
+        {
+            if (side.sqrMagnitude < 0.0001f)
+                side = Vector3.right;
+            side.Normalize();
+            Vector3 depth = Vector3.Cross(Vector3.up, side);
+            if (depth.sqrMagnitude < 0.01f)
+                depth = Vector3.forward;
+            depth.Normalize();
+            float mess = FirewoodBundleConfig.HookScatter;
+            return (side * (HashUnit(index, 1) * spacing * 0.22f)
+                + depth * (HashUnit(index, 2) * 0.005f)
+                + Vector3.down * (HashUnit(index, 3) * 0.006f)) * mess;
+        }
+
+        private static float WobbleAngle(int index, int salt, float degrees)
+        {
+            return HashUnit(index, salt) * degrees * FirewoodBundleConfig.HookScatter;
+        }
+
+        private static float HashUnit(int index, int salt)
+        {
+            uint n = (uint)(index * 374761393 + salt * 668265263);
+            n = (n ^ (n >> 13)) * 1274126177u;
+            n ^= n >> 16;
+            return ((n & 65535) / 32767.5f) - 1f;
         }
 
         private static void AddCord(ShipItem item, MeshRenderer source, List<Renderer> renderers, Vector3 from, Vector3 to)

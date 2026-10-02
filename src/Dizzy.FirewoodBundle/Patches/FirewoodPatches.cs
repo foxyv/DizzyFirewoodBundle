@@ -561,12 +561,19 @@ namespace Dizzy.FirewoodBundle
         private static void Postfix(ShipItem __instance)
         {
             int count = FirewoodPieces.CountOf(__instance);
-            if (count <= 1)
-                return;
-            __instance.lookText = FirewoodPieces.LookText(count);
-            ShipItem prefab = FirewoodPieces.PrefabOf(__instance);
-            if (prefab != null)
-                __instance.description = prefab.description;
+            if (count > 1)
+            {
+                __instance.lookText = FirewoodPieces.LookText(count);
+                ShipItem prefab = FirewoodPieces.PrefabOf(__instance);
+                if (prefab != null)
+                    __instance.description = prefab.description;
+            }
+
+            if (HookLinePieces.IsLine(__instance))
+            {
+                __instance.lookText = HookLinePieces.LookText(HookLinePieces.CountOf(__instance));
+                __instance.description = "";
+            }
         }
     }
 
@@ -585,6 +592,8 @@ namespace Dizzy.FirewoodBundle
             TextMesh ___textRIcon)
         {
             ShipItem item = FirewoodPieces.AsShip(button);
+            if (item == null)
+                item = ItemInCrateSlot(button);
             int count = FirewoodPieces.CountOf(item);
             if (count > 1)
             {
@@ -635,6 +644,7 @@ namespace Dizzy.FirewoodBundle
                         ___textRIcon.gameObject.SetActive(false);
                     if (___mouseRIcon != null)
                         ___mouseRIcon.enabled = false;
+                    OfferCrateGather(___controlsText, button);
                     return;
                 }
 
@@ -655,7 +665,10 @@ namespace Dizzy.FirewoodBundle
             }
 
             if (!FirewoodBundleConfig.IsEnabled)
+            {
+                OfferCrateGather(___controlsText, button);
                 return;
+            }
             if (FirewoodPieces.CanTarget(held, item))
             {
                 int heldCount = FirewoodPieces.CountOf(held);
@@ -676,6 +689,7 @@ namespace Dizzy.FirewoodBundle
                     ___textRIcon.gameObject.SetActive(false);
                 if (___mouseRIcon != null)
                     ___mouseRIcon.enabled = false;
+                OfferCrateGather(___controlsText, button);
                 return;
             }
 
@@ -692,6 +706,39 @@ namespace Dizzy.FirewoodBundle
                 if (___textRIcon != null)
                     ___textRIcon.gameObject.SetActive(true);
             }
+
+            OfferCrateGather(___controlsText, button);
+        }
+
+        private static void OfferCrateGather(TextMesh controls, GoPointerButton button)
+        {
+            if (controls == null || !FirewoodBundleConfig.HooksAreEnabled)
+                return;
+
+            ShipItemCrate crate = button as ShipItemCrate;
+            if (crate == null && CrateInventoryUI.instance != null && CrateInventoryUI.instance.showingUI)
+            {
+                CrateInventory inventory = CrateInventoryUI.instance.currentCrate;
+                if (inventory != null)
+                    crate = inventory.GetComponent<ShipItemCrate>();
+            }
+
+            if (!HookLinePieces.CanGather(crate))
+                return;
+            if (controls.text != null && controls.text.IndexOf("G Bundle Hooks", System.StringComparison.Ordinal) >= 0)
+                return;
+            controls.text = (controls.text ?? "") + "\nG Bundle Hooks";
+        }
+
+        private static ShipItem ItemInCrateSlot(GoPointerButton button)
+        {
+            CrateInventoryButton slot = button as CrateInventoryButton;
+            if (slot == null)
+                return null;
+            var field = AccessTools.Field(typeof(CrateInventoryButton), "currentItem");
+            if (field == null)
+                return null;
+            return field.GetValue(slot) as ShipItem;
         }
     }
 
@@ -712,6 +759,69 @@ namespace Dizzy.FirewoodBundle
             {
                 Plugin.Log.LogError("Could not rebuild a loaded firewood bundle: " + ex.Message);
             }
+        }
+    }
+
+    [HarmonyPatch(typeof(CrateInventoryButton), nameof(CrateInventoryButton.ShowItem))]
+    internal static class HookLineCrateCountPatch
+    {
+        private static void Postfix(CrateInventoryButton __instance, ShipItem item)
+        {
+            HookLineCrateLabel.Show(__instance, item);
+        }
+    }
+
+    internal static class HookLineCrateLabel
+    {
+        private const string LabelName = "HookLineCount";
+
+        internal static void Show(CrateInventoryButton slot, ShipItem item)
+        {
+            Clear(slot);
+            if (slot == null || !HookLinePieces.IsLine(item))
+                return;
+
+            int hooks = HookLinePieces.CountOf(item);
+            slot.lookText = HookLinePieces.LookText(hooks);
+            slot.description = "";
+            Create(slot, hooks);
+        }
+
+        private static void Clear(CrateInventoryButton slot)
+        {
+            Transform transform = slot.transform;
+            for (int i = transform.childCount - 1; i >= 0; i--)
+            {
+                Transform child = transform.GetChild(i);
+                if (child.name == LabelName)
+                    Object.Destroy(child.gameObject);
+            }
+        }
+
+        private static void Create(CrateInventoryButton slot, int hooks)
+        {
+            Font font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            if (font == null)
+                return;
+
+            var label = new GameObject(LabelName);
+            label.layer = slot.gameObject.layer;
+            label.transform.SetParent(slot.transform, false);
+            label.transform.localPosition = new Vector3(0f, -0.16f, 0.08f);
+            label.transform.localRotation = Quaternion.identity;
+            label.transform.localScale = Vector3.one;
+
+            TextMesh text = label.AddComponent<TextMesh>();
+            text.font = font;
+            text.text = hooks.ToString();
+            text.anchor = TextAnchor.MiddleCenter;
+            text.alignment = TextAlignment.Center;
+            text.fontSize = 48;
+            text.characterSize = 0.012f;
+            text.color = new Color(0.12f, 0.08f, 0.04f);
+            MeshRenderer renderer = label.GetComponent<MeshRenderer>();
+            if (renderer != null)
+                renderer.sharedMaterial = font.material;
         }
     }
 

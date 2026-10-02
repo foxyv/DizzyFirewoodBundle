@@ -40,13 +40,15 @@ namespace Dizzy.FirewoodBundle
                 + " loaded (Enabled=" + FirewoodBundleConfig.Enabled.Value
                 + ", MaxPieces=" + FirewoodBundleConfig.MaxPieces.Value
                 + ", Hooks=" + FirewoodBundleConfig.HooksEnabled.Value
-                + ", MaxHooks=" + FirewoodBundleConfig.MaxHooks.Value + ").");
+                + ", MaxHooks=" + FirewoodBundleConfig.MaxHooks.Value
+                + ", Messiness=" + FirewoodBundleConfig.HookMessiness.Value + ").");
         }
 
         private void LateUpdate()
         {
             FirewoodPieces.ReleaseHeldPiece();
             HookLinePieces.ReleaseHeldHook();
+            HookLinePieces.GatherLookedAtCrate();
         }
 
         private void OnDestroy()

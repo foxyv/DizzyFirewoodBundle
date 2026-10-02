@@ -8,6 +8,7 @@ namespace Dizzy.FirewoodBundle
         internal static ConfigEntry<int> MaxPieces;
         internal static ConfigEntry<bool> HooksEnabled;
         internal static ConfigEntry<int> MaxHooks;
+        internal static ConfigEntry<float> HookMessiness;
 
         internal static bool IsEnabled
         {
@@ -29,6 +30,11 @@ namespace Dizzy.FirewoodBundle
             get { return MaxHooks != null ? MaxHooks.Value : 20; }
         }
 
+        internal static float HookScatter
+        {
+            get { return HookMessiness != null ? HookMessiness.Value : 1f; }
+        }
+
         internal static void Bind(ConfigFile config)
         {
             Enabled = config.Bind(
@@ -47,13 +53,21 @@ namespace Dizzy.FirewoodBundle
                 "Hooks",
                 "Enabled",
                 true,
-                "Hold a fishing hook and right-click another hook to string them on a line. A line can be hung from a lamp hook.");
+                "Hold a fishing hook and right-click another hook to string them on a line. A line can be hung from a lamp hook. Press G on a crate to bundle the loose hooks inside it. A sealed crate of hooks is unsealed.");
 
             MaxHooks = config.Bind(
                 "Hooks",
                 "MaxHooks",
                 20,
                 "Most fishing hooks one line can hold. They hang down the line, one under the next.");
+
+            HookMessiness = config.Bind(
+                "Hooks",
+                "Messiness",
+                1f,
+                new ConfigDescription(
+                    "Multiplier for how far each hook is shifted and tilted off a neat line. 0 hangs them evenly. 1 is the usual scatter.",
+                    new AcceptableValueRange<float>(0f, 3f)));
         }
     }
 }
