@@ -22,14 +22,25 @@ namespace Dizzy.FirewoodBundle
             ref GoPointerButton ___pointedAtButton,
             ref float ___currentLookDistance)
         {
-            if (!FirewoodBundleConfig.IsEnabled)
+            if (!FirewoodBundleConfig.IsEnabled && !FirewoodBundleConfig.HooksAreEnabled)
                 return;
 
             ShipItem held = FirewoodPieces.AsShip(___heldItem);
-            if (!FirewoodPieces.IsPiece(held))
+            if (FirewoodBundleConfig.HooksAreEnabled && HookLinePieces.IsHook(held))
+            {
+                AimHeldHook(__instance, held, ___debugEditorPointer, ___raycastRay, ref ___pointedAtButton, ref ___currentLookDistance);
+                return;
+            }
+
+            if (!FirewoodBundleConfig.IsEnabled || !FirewoodPieces.IsPiece(held))
             {
                 if (___heldItem == null && ___pointedAtButton == null)
-                    AimAtNailedBundle(__instance, ___debugEditorPointer, ___raycastRay, ref ___pointedAtButton, ref ___currentLookDistance);
+                {
+                    if (FirewoodBundleConfig.IsEnabled)
+                        AimAtNailedBundle(__instance, ___debugEditorPointer, ___raycastRay, ref ___pointedAtButton, ref ___currentLookDistance);
+                    if (___pointedAtButton == null && FirewoodBundleConfig.HooksAreEnabled)
+                        AimAtHangingLine(__instance, ___debugEditorPointer, ___raycastRay, ref ___pointedAtButton, ref ___currentLookDistance);
+                }
                 return;
             }
 
@@ -71,6 +82,50 @@ namespace Dizzy.FirewoodBundle
             ___currentLookDistance = 0f;
         }
 
+        // Another hook is the string target. A lamp hook stays highlighted so the line can be hung.
+        // A single hook can still be set on an empty rod.
+        private static void AimHeldHook(
+            GoPointer pointer,
+            ShipItem held,
+            bool debugEditorPointer,
+            Ray raycastRay,
+            ref GoPointerButton pointedAtButton,
+            ref float currentLookDistance)
+        {
+            Ray ray = FirewoodPieces.MakeRay(debugEditorPointer, raycastRay);
+            float hookDistance;
+            ShipItem hook = HookLinePieces.HookInFront(held, ray, out hookDistance);
+            if (hook != null)
+            {
+                if (pointedAtButton != null && pointedAtButton != hook)
+                    pointedAtButton.ForceUnlook();
+                pointedAtButton = hook;
+                hook.Look(pointer);
+                currentLookDistance = hookDistance;
+                return;
+            }
+
+            if (pointedAtButton != null && pointedAtButton.GetComponent<ShipItemLampHook>() != null && HookLinePieces.IsLine(held))
+                return;
+            if (pointedAtButton != null && pointedAtButton.GetComponentInParent<ShipItemFishingRod>() != null)
+            {
+                // One loose hook can go on an empty rod. A line cannot, even when one hook is left on it.
+                if (!HookLinePieces.IsLine(held))
+                    return;
+                pointedAtButton.ForceUnlook();
+                pointedAtButton = null;
+                currentLookDistance = 0f;
+                return;
+            }
+            if (pointedAtButton != null && held.AllowOnItemClick(pointedAtButton))
+                return;
+
+            if (pointedAtButton != null)
+                pointedAtButton.ForceUnlook();
+            pointedAtButton = null;
+            currentLookDistance = 0f;
+        }
+
         // Empty hands ignore nailed items unless they are a crate, bottle, or bed.
         // A nailed firewood bundle still needs to be the look target so right-click can take a log.
         private static void AimAtNailedBundle(
@@ -100,6 +155,41 @@ namespace Dizzy.FirewoodBundle
             GoPointerButton button = ButtonOf(nearestCollider);
             ShipItem bundle = button as ShipItem;
             if (bundle == null || !bundle.nailed || bundle.unclickable || FirewoodPieces.CountOf(bundle) <= 1)
+                return;
+
+            pointedAtButton = button;
+            button.Look(pointer);
+            currentLookDistance = nearest;
+        }
+
+        // Hanging turns off the line's physics colliders, so an empty-handed look can miss it.
+        private static void AimAtHangingLine(
+            GoPointer pointer,
+            bool debugEditorPointer,
+            Ray raycastRay,
+            ref GoPointerButton pointedAtButton,
+            ref float currentLookDistance)
+        {
+            Ray ray = FirewoodPieces.MakeRay(debugEditorPointer, raycastRay);
+            int count = Physics.RaycastNonAlloc(
+                ray,
+                Hits,
+                FirewoodPieces.Reach,
+                FirewoodPieces.LayerMask,
+                QueryTriggerInteraction.Collide);
+            float nearest = float.MaxValue;
+            Collider nearestCollider = null;
+            for (int i = 0; i < count; i++)
+            {
+                if (Hits[i].distance >= nearest)
+                    continue;
+                nearest = Hits[i].distance;
+                nearestCollider = Hits[i].collider;
+            }
+
+            GoPointerButton button = ButtonOf(nearestCollider);
+            ShipItem line = button as ShipItem;
+            if (line == null || line.unclickable || !HookLinePieces.IsLine(line) || !HookLinePieces.IsHanging(line))
                 return;
 
             pointedAtButton = button;
@@ -191,9 +281,11 @@ namespace Dizzy.FirewoodBundle
         // after you come back aboard and the drop is refused.
         private static void Postfix(PickupableItemCollisionChecker __instance, ShipItem ___item)
         {
-            if (!FirewoodBundleConfig.IsEnabled || ___item == null || ___item.held == null)
+            if (___item == null || ___item.held == null)
                 return;
-            if (!FirewoodPieces.IsPiece(___item))
+            bool wood = FirewoodBundleConfig.IsEnabled && FirewoodPieces.IsPiece(___item);
+            bool hooks = FirewoodBundleConfig.HooksAreEnabled && HookLinePieces.IsHook(___item);
+            if (!wood && !hooks)
                 return;
 
             var listField = AccessTools.Field(typeof(PickupableItemCollisionChecker), "collidedCols");
@@ -252,6 +344,7 @@ namespace Dizzy.FirewoodBundle
         private static void Postfix(GoPointerButton __instance)
         {
             FirewoodBundleBuilder.SyncOutline(__instance as ShipItem);
+            HookLineBuilder.SyncOutline(__instance as ShipItem);
         }
     }
 
@@ -260,12 +353,22 @@ namespace Dizzy.FirewoodBundle
     {
         private static bool Prefix(ShipItem __instance)
         {
-            if (!FirewoodBundleConfig.IsEnabled)
-                return true;
-            if (FirewoodPieces.TryGlue(__instance))
-                return false;
-            if (FirewoodPieces.TrySplit(__instance))
-                return false;
+            if (FirewoodBundleConfig.IsEnabled)
+            {
+                if (FirewoodPieces.TryGlue(__instance))
+                    return false;
+                if (FirewoodPieces.TrySplit(__instance))
+                    return false;
+            }
+
+            if (FirewoodBundleConfig.HooksAreEnabled)
+            {
+                if (HookLinePieces.TryString(__instance))
+                    return false;
+                if (HookLinePieces.TrySplit(__instance))
+                    return false;
+            }
+
             return true;
         }
     }
@@ -328,6 +431,50 @@ namespace Dizzy.FirewoodBundle
         }
     }
 
+    [HarmonyPatch(typeof(ShipItemFishingHook), nameof(ShipItemFishingHook.AllowOnItemClick))]
+    internal static class HookLineHangPatch
+    {
+        private static void Postfix(ShipItemFishingHook __instance, GoPointerButton lookedAtButton, ref bool __result)
+        {
+            if (!FirewoodBundleConfig.HooksAreEnabled || lookedAtButton == null)
+                return;
+            if (!HookLinePieces.IsLine(__instance))
+                return;
+            if (lookedAtButton.GetComponent<ShipItemLampHook>() != null)
+                __result = true;
+            if (lookedAtButton.GetComponentInParent<ShipItemFishingRod>() != null)
+                __result = false;
+        }
+    }
+
+    [HarmonyPatch(typeof(ShipItemFishingRod), nameof(ShipItemFishingRod.OnItemClick))]
+    internal static class HookLineRodPatch
+    {
+        // A line is many hooks. Putting it on a rod would destroy the whole line for one hook.
+        private static bool Prefix(PickupableItem heldItem, ref bool __result)
+        {
+            if (!FirewoodBundleConfig.HooksAreEnabled)
+                return true;
+            if (!HookLinePieces.IsLine(FirewoodPieces.AsShip(heldItem)))
+                return true;
+            __result = false;
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(ShipItem), nameof(ShipItem.OnEnterInventory))]
+    internal static class HookLineStowPatch
+    {
+        private static void Postfix(ShipItem __instance)
+        {
+            if (!HookLinePieces.IsHook(__instance))
+                return;
+            HangableItem hang = __instance.GetComponent<HangableItem>();
+            if (hang != null && hang.IsHanging())
+                hang.DisconnectJoint();
+        }
+    }
+
     [HarmonyPatch(typeof(ShipItemStove), nameof(ShipItemStove.OnItemClick))]
     internal static class FirewoodStovePatch
     {
@@ -368,10 +515,16 @@ namespace Dizzy.FirewoodBundle
         // Returning true here would drop it with no collision check.
         private static bool Prefix(ShipItem __instance, PickupableItem heldItem, ref bool __result)
         {
+            ShipItem held = FirewoodPieces.AsShip(heldItem);
+            if (FirewoodBundleConfig.HooksAreEnabled && HookLinePieces.IsHook(held) && HookLinePieces.IsHook(__instance))
+            {
+                __result = false;
+                return false;
+            }
+
             if (!FirewoodBundleConfig.IsEnabled)
                 return true;
 
-            ShipItem held = FirewoodPieces.AsShip(heldItem);
             if (!FirewoodPieces.IsPiece(held) || !FirewoodPieces.IsPiece(__instance))
                 return true;
 
@@ -387,6 +540,18 @@ namespace Dizzy.FirewoodBundle
         {
             if (FirewoodPieces.IsPiece(__instance))
                 FirewoodPieces.NotePickedUp();
+            if (HookLinePieces.IsHook(__instance))
+            {
+                HookLinePieces.NotePickedUp();
+                if (HookLinePieces.IsLine(__instance) && HookLinePieces.CountOf(__instance) <= 1)
+                    HookLineBuilder.RestoreSingle(__instance);
+                else
+                {
+                    HangableItem hang = __instance.GetComponent<HangableItem>();
+                    if (hang != null && hang.IsHanging())
+                        hang.DisconnectJoint();
+                }
+            }
         }
     }
 
@@ -433,10 +598,64 @@ namespace Dizzy.FirewoodBundle
                     ___hintText.text = item.description;
             }
 
-            if (!FirewoodBundleConfig.IsEnabled || ___pointer == null || ___controlsText == null)
+            if (___pointer == null || ___controlsText == null)
                 return;
 
             ShipItem held = FirewoodPieces.AsShip(___pointer.GetHeldItem());
+            if (FirewoodBundleConfig.HooksAreEnabled && HookLinePieces.IsHook(item))
+            {
+                int hookCount = HookLinePieces.CountOf(item);
+                bool line = HookLinePieces.IsLine(item);
+                if (line)
+                {
+                    item.lookText = HookLinePieces.LookText(hookCount);
+                    item.description = "";
+                    if (___extraText != null)
+                        ___extraText.text = item.lookText;
+                    if (___hintText != null)
+                        ___hintText.text = "";
+                }
+
+                if (HookLinePieces.CanTarget(held, item))
+                {
+                    int heldCount = HookLinePieces.CountOf(held);
+                    string action = "\nR String Hooks";
+                    if (!HookLinePieces.Fits(heldCount + hookCount))
+                        action = "\nR Line Full";
+                    else if (line)
+                        action = "\nR Add to Line";
+                    else if (heldCount > 1 && hookCount <= 1)
+                        action = "\nR Add Hook";
+                    ___controlsText.text = action;
+                    if (___textLicon != null)
+                        ___textLicon.gameObject.SetActive(false);
+                    if (___mouseLIcon != null)
+                        ___mouseLIcon.enabled = false;
+                    if (___textRIcon != null)
+                        ___textRIcon.gameObject.SetActive(false);
+                    if (___mouseRIcon != null)
+                        ___mouseRIcon.enabled = false;
+                    return;
+                }
+
+                if (line && held == null)
+                {
+                    bool lastHook = hookCount <= 1 && HookLinePieces.IsHanging(item);
+                    ___controlsText.text = lastHook ? "\ntake" : "pick up\ntake";
+                    if (lastHook)
+                    {
+                        if (___textLicon != null)
+                            ___textLicon.gameObject.SetActive(false);
+                        if (___mouseLIcon != null)
+                            ___mouseLIcon.enabled = false;
+                    }
+                    if (___textRIcon != null)
+                        ___textRIcon.gameObject.SetActive(true);
+                }
+            }
+
+            if (!FirewoodBundleConfig.IsEnabled)
+                return;
             if (FirewoodPieces.CanTarget(held, item))
             {
                 int heldCount = FirewoodPieces.CountOf(held);
@@ -486,6 +705,8 @@ namespace Dizzy.FirewoodBundle
                 ShipItem item = __instance.GetComponent<ShipItem>();
                 if (FirewoodPieces.CountOf(item) > 1)
                     FirewoodBundleBuilder.Apply(item);
+                if (HookLinePieces.IsLine(item))
+                    HookLineBuilder.Apply(item);
             }
             catch (System.Exception ex)
             {
@@ -500,6 +721,7 @@ namespace Dizzy.FirewoodBundle
         private static void Prefix(ShipItem __instance)
         {
             FirewoodBundleBuilder.Forget(__instance);
+            HookLineBuilder.Forget(__instance);
         }
     }
 

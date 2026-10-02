@@ -38,12 +38,15 @@ namespace Dizzy.FirewoodBundle
             Log.LogInfo(
                 PluginName + " v" + PluginVersion
                 + " loaded (Enabled=" + FirewoodBundleConfig.Enabled.Value
-                + ", MaxPieces=" + FirewoodBundleConfig.MaxPieces.Value + ").");
+                + ", MaxPieces=" + FirewoodBundleConfig.MaxPieces.Value
+                + ", Hooks=" + FirewoodBundleConfig.HooksEnabled.Value
+                + ", MaxHooks=" + FirewoodBundleConfig.MaxHooks.Value + ").");
         }
 
         private void LateUpdate()
         {
             FirewoodPieces.ReleaseHeldPiece();
+            HookLinePieces.ReleaseHeldHook();
         }
 
         private void OnDestroy()

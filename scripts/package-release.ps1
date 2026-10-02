@@ -28,6 +28,7 @@ if (Test-Path $staging) {
 }
 New-Item -ItemType Directory -Force -Path $pluginDir | Out-Null
 Copy-Item $dll $pluginDir -Force
+Copy-Item "LICENSE" $pluginDir -Force
 
 if (Test-Path $zipPath) {
     Remove-Item $zipPath -Force

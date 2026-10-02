@@ -776,7 +776,7 @@ namespace Dizzy.FirewoodBundle
             item.holdDistance = baseDistance + extra;
         }
 
-        private static void QuietHull(ShipItem item)
+        internal static void QuietHull(ShipItem item)
         {
             if (item == null)
                 return;

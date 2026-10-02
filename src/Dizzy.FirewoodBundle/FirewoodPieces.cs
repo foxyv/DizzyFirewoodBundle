@@ -219,7 +219,7 @@ namespace Dizzy.FirewoodBundle
 
         // ExitBoat unparents the log's physics body. On a heeling, moving ship that body
         // is left in the hull's path and the boat plays an impact, the same bang as cutting a fish.
-        private static void Silence(ShipItem item)
+        internal static void Silence(ShipItem item)
         {
             if (item == null)
                 return;
@@ -248,7 +248,7 @@ namespace Dizzy.FirewoodBundle
             }
         }
 
-        private static void Consume(ShipItem item)
+        internal static void Consume(ShipItem item)
         {
             if (item == null)
                 return;
