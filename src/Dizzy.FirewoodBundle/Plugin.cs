@@ -41,7 +41,10 @@ namespace Dizzy.FirewoodBundle
                 + ", MaxPieces=" + FirewoodBundleConfig.MaxPieces.Value
                 + ", Hooks=" + FirewoodBundleConfig.HooksEnabled.Value
                 + ", MaxHooks=" + FirewoodBundleConfig.MaxHooks.Value
-                + ", Messiness=" + FirewoodBundleConfig.HookMessiness.Value + ").");
+                + ", Hook Messiness=" + FirewoodBundleConfig.HookMessiness.Value
+                + ", Hook Flare=" + FirewoodBundleConfig.HookFlareAmount.Value
+                + ", Spacing=" + FirewoodBundleConfig.HookSpacingAmount.Value
+                + ", Line Length=" + FirewoodBundleConfig.HookLineLengthAmount.Value + ").");
         }
 
         private void LateUpdate()

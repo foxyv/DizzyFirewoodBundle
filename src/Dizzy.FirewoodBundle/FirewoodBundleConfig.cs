@@ -9,6 +9,9 @@ namespace Dizzy.FirewoodBundle
         internal static ConfigEntry<bool> HooksEnabled;
         internal static ConfigEntry<int> MaxHooks;
         internal static ConfigEntry<float> HookMessiness;
+        internal static ConfigEntry<float> HookFlareAmount;
+        internal static ConfigEntry<float> HookSpacingAmount;
+        internal static ConfigEntry<float> HookLineLengthAmount;
 
         internal static bool IsEnabled
         {
@@ -33,6 +36,21 @@ namespace Dizzy.FirewoodBundle
         internal static float HookScatter
         {
             get { return HookMessiness != null ? HookMessiness.Value : 1f; }
+        }
+
+        internal static float HookFlare
+        {
+            get { return HookFlareAmount != null ? HookFlareAmount.Value : 1f; }
+        }
+
+        internal static float HookSpacing
+        {
+            get { return HookSpacingAmount != null ? HookSpacingAmount.Value : 1f; }
+        }
+
+        internal static float HookLineLength
+        {
+            get { return HookLineLengthAmount != null ? HookLineLengthAmount.Value : 1f; }
         }
 
         internal static void Bind(ConfigFile config)
@@ -63,11 +81,46 @@ namespace Dizzy.FirewoodBundle
 
             HookMessiness = config.Bind(
                 "Hooks",
-                "Messiness",
-                1f,
+                "Hook Messiness",
+                LegacyFloat(config, "Messiness", 1f),
                 new ConfigDescription(
                     "Multiplier for how far each hook is shifted and tilted off a neat line. 0 hangs them evenly. 1 is the usual scatter.",
                     new AcceptableValueRange<float>(0f, 3f)));
+
+            HookFlareAmount = config.Bind(
+                "Hooks",
+                "Hook Flare",
+                LegacyFloat(config, "Flare", 1f),
+                new ConfigDescription(
+                    "How far the hook points swing from the string. Positive values flare them out. Negative values bunch them in. 0 hangs them straight down. The hooks at the ends move farthest.",
+                    new AcceptableValueRange<float>(-3f, 3f)));
+
+            HookSpacingAmount = config.Bind(
+                "Hooks",
+                "Spacing",
+                1f,
+                new ConfigDescription(
+                    "Multiplier for the gap between hooks on a line. 1 is the usual gap. Lower packs them tighter. Higher spreads them out.",
+                    new AcceptableValueRange<float>(0.4f, 3f)));
+
+            HookLineLengthAmount = config.Bind(
+                "Hooks",
+                "Line Length",
+                1f,
+                new ConfigDescription(
+                    "Multiplier for how far the hooks hang below the top of the string. 1 is the usual length. Lower shortens the hanger. Higher drops the hooks farther down.",
+                    new AcceptableValueRange<float>(0.4f, 3f)));
+        }
+
+        private static float LegacyFloat(ConfigFile config, string key, float fallback)
+        {
+            ConfigEntry<float> oldEntry;
+            if (!config.TryGetEntry("Hooks", key, out oldEntry))
+                return fallback;
+
+            fallback = oldEntry.Value;
+            config.Remove(oldEntry.Definition);
+            return fallback;
         }
     }
 }

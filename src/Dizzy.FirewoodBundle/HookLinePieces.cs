@@ -8,6 +8,9 @@ namespace Dizzy.FirewoodBundle
     internal static class HookLinePieces
     {
         private static readonly RaycastHit[] Hits = new RaycastHit[32];
+        private static readonly FieldInfo LampOccupiedField = AccessTools.Field(typeof(ShipItemLampHook), "occupied");
+        private static readonly FieldInfo CurrentHookField = AccessTools.Field(typeof(HangableItem), "currentHook");
+        private static readonly HashSet<int> ClaimedLamps = new HashSet<int>();
         private static float _pickedUpAt = -10f;
 
         internal static bool IsHook(Component component)
@@ -100,6 +103,56 @@ namespace Dizzy.FirewoodBundle
             return hang != null && hang.IsHanging();
         }
 
+        internal static ShipItemLampHook LampOf(Component item)
+        {
+            if (item == null)
+                return null;
+            ShipItemLampHook lamp = item.GetComponent<ShipItemLampHook>();
+            if (lamp != null)
+                return lamp;
+            return item.GetComponentInParent<ShipItemLampHook>();
+        }
+
+        internal static bool LampIsOccupied(ShipItemLampHook lamp)
+        {
+            if (lamp == null || LampOccupiedField == null)
+                return false;
+            object value = LampOccupiedField.GetValue(lamp);
+            return value is bool occupied && occupied;
+        }
+
+        internal static bool LineClaims(ShipItemLampHook lamp)
+        {
+            return lamp != null && ClaimedLamps.Contains(lamp.GetInstanceID());
+        }
+
+        internal static void ClaimLamp(ShipItemLampHook lamp)
+        {
+            if (lamp == null || LampOccupiedField == null)
+                return;
+            LampOccupiedField.SetValue(lamp, true);
+            ClaimedLamps.Add(lamp.GetInstanceID());
+            lamp.lookText = "occupied";
+        }
+
+        internal static void FreeLamp(ShipItemLampHook lamp)
+        {
+            if (lamp == null || LampOccupiedField == null)
+                return;
+            if (!ClaimedLamps.Remove(lamp.GetInstanceID()))
+                return;
+            LampOccupiedField.SetValue(lamp, false);
+            lamp.lookText = "";
+            lamp.UpdateLookText();
+        }
+
+        internal static Collider CurrentHook(HangableItem hang)
+        {
+            if (hang == null || CurrentHookField == null)
+                return null;
+            return CurrentHookField.GetValue(hang) as Collider;
+        }
+
         internal static ShipItem HookInFront(ShipItem held, Ray ray, out float distance)
         {
             int count = Physics.RaycastNonAlloc(
@@ -158,16 +211,31 @@ namespace Dizzy.FirewoodBundle
             if (!CanTarget(held, target))
                 return false;
 
-            int count = CountOf(held) + CountOf(target);
+            int heldCount = CountOf(held);
+            int targetCount = CountOf(target);
+            bool targetLine = targetCount > 1 || IsLine(target);
+            if (targetLine)
+            {
+                int room = FirewoodBundleConfig.HookLimit - targetCount;
+                if (room <= 0)
+                {
+                    Plugin.Log.LogInfo("Hook line already holds " + FirewoodBundleConfig.HookLimit + " hooks.");
+                    return false;
+                }
+
+                int move = heldCount < room ? heldCount : room;
+                if (move >= heldCount)
+                    return AddHeldToLine(held, target, pointer, targetCount + move);
+                return FillLine(held, target, move);
+            }
+
+            int count = heldCount + targetCount;
             if (count < 2 || !Fits(count))
             {
                 if (count >= 2)
                     Plugin.Log.LogInfo("Hook line already holds " + FirewoodBundleConfig.HookLimit + " hooks.");
                 return false;
             }
-
-            if (CountOf(target) > 1 || IsLine(target))
-                return AddHeldToLine(held, target, pointer, count);
 
             float previousAmount = held.amount;
             WriteCount(held, count);
@@ -186,6 +254,118 @@ namespace Dizzy.FirewoodBundle
 
             Plugin.Log.LogInfo("Strung " + count + " fishing hooks.");
             return true;
+        }
+
+        internal static bool CanBaitRod(ShipItem held, Component looked)
+        {
+            if (!FirewoodBundleConfig.HooksAreEnabled)
+                return false;
+            ShipItemFishingRod heldRod = RodOf(held);
+            ShipItemFishingRod lookedRod = RodOf(looked);
+            if (heldRod != null && lookedRod == null)
+                return heldRod.health <= 0f && IsLine(FirewoodPieces.AsShip(looked));
+            if (lookedRod != null && heldRod == null)
+                return lookedRod.health <= 0f && IsLine(held);
+            return false;
+        }
+
+        internal static bool TryBaitRod(ShipItem held)
+        {
+            if (!IsLine(held) || held == null || held.held == null)
+                return false;
+            ShipItemFishingRod rod = RodOf(held.held.GetPointedAtItem());
+            if (rod == null || rod.health > 0f)
+                return false;
+            return GiveOneToRod(held, rod);
+        }
+
+        internal static bool GiveOneToRod(ShipItem line, ShipItemFishingRod rod)
+        {
+            if (!FirewoodBundleConfig.HooksAreEnabled || !IsLine(line) || rod == null || rod.health > 0f)
+                return false;
+            if (line.unclickable || !line.sold)
+                return false;
+
+            int count = CountOf(line);
+            if (count < 1)
+                return false;
+
+            rod.health = 1f;
+            MethodInfo update = AccessTools.Method(typeof(ShipItemFishingRod), "UpdateHook");
+            if (update != null)
+                update.Invoke(rod, null);
+
+            if (count <= 1)
+            {
+                GoPointer pointer = line.held;
+                if (pointer != null)
+                {
+                    FirewoodPieces.Silence(line);
+                    pointer.DropItem();
+                }
+                HookLineBuilder.Discard(line);
+                FirewoodPieces.Consume(line);
+                Plugin.Log.LogInfo("Put the last fishing hook on the rod.");
+                return true;
+            }
+
+            int left = count - 1;
+            if (left <= 1 && IsHanging(line))
+            {
+                WriteCount(line, 1, true);
+                HookLineBuilder.Apply(line);
+            }
+            else if (left <= 1)
+            {
+                WriteCount(line, 1);
+                HookLineBuilder.RestoreSingle(line);
+            }
+            else
+            {
+                WriteCount(line, left);
+                HookLineBuilder.Apply(line);
+            }
+
+            Plugin.Log.LogInfo("Put 1 fishing hook on the rod. " + left + " left on the line.");
+            return true;
+        }
+
+        internal static ShipItem LineInFront(Ray ray, out float distance)
+        {
+            int count = Physics.RaycastNonAlloc(
+                ray,
+                Hits,
+                FirewoodPieces.Reach,
+                FirewoodPieces.LayerMask,
+                QueryTriggerInteraction.Collide);
+            ShipItem line = null;
+            float nearest = float.MaxValue;
+            for (int i = 0; i < count; i++)
+            {
+                if (Hits[i].distance >= nearest)
+                    continue;
+                ShipItem ship = Resolve(Hits[i].collider);
+                if (!IsLine(ship) || ship.unclickable)
+                    continue;
+                nearest = Hits[i].distance;
+                line = ship;
+            }
+
+            distance = line != null ? nearest : 0f;
+            return line;
+        }
+
+        private static ShipItemFishingRod RodOf(Component item)
+        {
+            if (item == null)
+                return null;
+            ShipItemFishingRod rod = item as ShipItemFishingRod;
+            if (rod != null)
+                return rod;
+            rod = item.GetComponent<ShipItemFishingRod>();
+            if (rod != null)
+                return rod;
+            return item.GetComponentInParent<ShipItemFishingRod>();
         }
 
         internal static bool TrySplit(ShipItem line)
@@ -309,6 +489,39 @@ namespace Dizzy.FirewoodBundle
             }
 
             Plugin.Log.LogInfo("Added a fishing hook to the line. It now holds " + count + ".");
+            return true;
+        }
+
+        private static bool FillLine(ShipItem held, ShipItem line, int move)
+        {
+            int lineCount = CountOf(line) + move;
+            int heldLeft = CountOf(held) - move;
+            float previousLine = line.amount;
+            float previousHeld = held.amount;
+            WriteCount(line, lineCount);
+            try
+            {
+                HookLineBuilder.Apply(line);
+                if (heldLeft <= 1)
+                {
+                    WriteCount(held, 1);
+                    HookLineBuilder.RestoreSingle(held);
+                }
+                else
+                {
+                    WriteCount(held, heldLeft);
+                    HookLineBuilder.Apply(held);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                line.amount = previousLine;
+                held.amount = previousHeld;
+                Plugin.Log.LogError("Could not fill a hook line: " + ex);
+                return false;
+            }
+
+            Plugin.Log.LogInfo("Moved " + move + " fishing hooks onto the line. It now holds " + lineCount + ".");
             return true;
         }
 

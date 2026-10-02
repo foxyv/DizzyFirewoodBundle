@@ -71,11 +71,17 @@ namespace Dizzy.FirewoodBundle
 
             // Hooks sit close together on a bowed bottom, each one a little off the perfect arc.
             // The string rises from both ends to the origin, which is the hang point.
-            float spacing = Mathf.Max(mesh.bounds.size[sideAxis] * 1.2f, 0.013f);
+            float spacing = Mathf.Max(mesh.bounds.size[sideAxis] * 1.2f, 0.013f) * FirewoodBundleConfig.HookSpacing;
             float span = (count - 1) * spacing;
             float half = span * 0.5f;
-            float sag = Mathf.Max(0.012f, span * 0.15f);
-            float rise = Mathf.Max(0.055f, half * 0.95f);
+            float length = FirewoodBundleConfig.HookLineLength;
+            float sag = Mathf.Max(0.012f, span * 0.15f) * length;
+            float rise = Mathf.Max(0.055f, half * 0.95f) * length;
+            Vector3 depth = Vector3.Cross(Vector3.up, side);
+            if (depth.sqrMagnitude < 0.01f)
+                depth = Vector3.forward;
+            depth.Normalize();
+            float flare = FirewoodBundleConfig.HookFlare;
             var knots = new Vector3[count];
             for (int i = 0; i < count; i++)
                 knots[i] = ArcKnot(i, count, side, half, rise, sag) + Wobble(i, side, spacing);
@@ -87,7 +93,9 @@ namespace Dizzy.FirewoodBundle
             hasRack = true;
             for (int i = 0; i < count; i++)
             {
-                Quaternion hookRotation = rotation * Quaternion.Euler(WobbleAngle(i, 4, 10f), WobbleAngle(i, 5, 24f), WobbleAngle(i, 6, 14f));
+                float outward = count <= 1 ? 0f : (i / (float)(count - 1)) * 2f - 1f;
+                Quaternion splay = Quaternion.AngleAxis(-outward * 22f * flare, depth);
+                Quaternion hookRotation = splay * rotation * Quaternion.Euler(WobbleAngle(i, 4, 10f), WobbleAngle(i, 5, 24f), WobbleAngle(i, 6, 14f));
                 Vector3 place = knots[i] - hookRotation * eye;
                 renderers.Add(CreateHook(item, mesh, source.sharedMaterials, place, hookRotation, source));
                 EncapsulateMesh(ref rack, ref hasRack, mesh, place, hookRotation);
