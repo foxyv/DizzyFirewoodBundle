@@ -138,6 +138,11 @@ namespace Dizzy.FirewoodBundle
             if (pointedAtButton != null && held.AllowOnItemClick(pointedAtButton))
                 return;
 
+            // A crate slot is not a ship item. Vanilla keeps it highlighted so the
+            // held line can be put into the container. Clearing it drops the click.
+            if (pointedAtButton != null && pointedAtButton.GetComponent<ShipItem>() == null)
+                return;
+
             if (pointedAtButton != null)
                 pointedAtButton.ForceUnlook();
             pointedAtButton = null;

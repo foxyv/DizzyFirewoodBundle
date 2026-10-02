@@ -540,7 +540,9 @@ namespace Dizzy.FirewoodBundle
             float baseMass = prefab != null ? prefab.mass : item.mass;
             if (baseMass <= 0f)
                 baseMass = 0.2f;
-            item.mass = baseMass * count;
+            // Item boxes accept an item only when its mass is 2 or less.
+            // A long line stays inside that limit so it can be put away.
+            item.mass = Mathf.Min(baseMass * count, 2f);
 
             ItemRigidbody body = item.itemRigidbodyC;
             if (body == null)
