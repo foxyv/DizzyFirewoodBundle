@@ -1,8 +1,8 @@
 # Packages Dizzy Firewood Bundle for GitHub Releases.
-# Usage: .\scripts\package-release.ps1 [-Version 0.3.1]
+# Usage: .\scripts\package-release.ps1 [-Version 0.3.2]
 
 param(
-    [string]$Version = "0.3.1"
+    [string]$Version = "0.3.2"
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,9 +10,11 @@ $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $root
 
 $dll = "src\Dizzy.FirewoodBundle\bin\Release\Dizzy.FirewoodBundle.dll"
-if (-not (Test-Path $dll)) {
-    Write-Host "Building Dizzy.FirewoodBundle Release..."
-    dotnet build src\Dizzy.FirewoodBundle\Dizzy.FirewoodBundle.csproj -c Release -p:DeployOnBuild=false
+# Always rebuild so an old DLL is never zipped.
+Write-Host "Building Dizzy.FirewoodBundle Release..."
+dotnet build src\Dizzy.FirewoodBundle\Dizzy.FirewoodBundle.csproj -c Release -p:DeployOnBuild=false
+if ($LASTEXITCODE -ne 0) {
+    throw "Build failed."
 }
 
 if (-not (Test-Path $dll)) {
