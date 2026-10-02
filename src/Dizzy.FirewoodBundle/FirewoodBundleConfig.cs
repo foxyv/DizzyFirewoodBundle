@@ -53,7 +53,7 @@ namespace Dizzy.FirewoodBundle
                 "Hooks",
                 "Enabled",
                 true,
-                "Hold a fishing hook and right-click another hook to string them on a line. A line can be hung from a lamp hook. Press G on a crate to bundle the loose hooks inside it. A sealed crate of hooks is unsealed.");
+                "Hold a fishing hook and right-click another hook to string them on a line. A line can be hung from a lamp hook. Look at a loose hook in an open crate and press G to bundle the loose hooks in that crate.");
 
             MaxHooks = config.Bind(
                 "Hooks",

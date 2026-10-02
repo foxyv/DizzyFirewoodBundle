@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Reflection;
+using HarmonyLib;
 using UnityEngine;
 
 namespace Dizzy.FirewoodBundle
@@ -387,7 +389,95 @@ namespace Dizzy.FirewoodBundle
             return collider.GetComponentInParent<ShipItem>();
         }
 
-        internal static void GatherLookedAtCrate()
+        internal static void ReleaseFromCrate(ShipItem item)
+        {
+            if (item == null)
+                return;
+            SaveablePrefab save = item.GetComponent<SaveablePrefab>();
+            ClearCrateSlot(item);
+            if (save == null || save.currentCrateId == 0)
+                return;
+
+            CrateInventory inventory = CrateWithId(save.currentCrateId);
+            if (inventory != null)
+                inventory.WithdrawItem(item);
+            ClearCrateSlot(item);
+            if (CrateInventoryUI.instance != null
+                && CrateInventoryUI.instance.showingUI
+                && CrateInventoryUI.instance.currentCrate == inventory)
+            {
+                CrateInventoryUI.instance.RefreshButtons();
+            }
+        }
+
+        private static CrateInventory CrateWithId(int crateId)
+        {
+            if (CrateInventoryUI.instance != null && CrateInventoryUI.instance.currentCrate != null)
+            {
+                CrateInventory open = CrateInventoryUI.instance.currentCrate;
+                SaveablePrefab openSave = open.GetComponent<SaveablePrefab>();
+                if (openSave != null && openSave.instanceId == crateId)
+                    return open;
+            }
+
+            CrateInventory[] inventories = Object.FindObjectsOfType<CrateInventory>();
+            for (int i = 0; i < inventories.Length; i++)
+            {
+                SaveablePrefab crateSave = inventories[i].GetComponent<SaveablePrefab>();
+                if (crateSave != null && crateSave.instanceId == crateId)
+                    return inventories[i];
+            }
+
+            return null;
+        }
+
+        private static void ReleaseShrunkSlots(CrateInventory inventory)
+        {
+            if (inventory == null || CrateInventoryUI.instance == null || CrateInventoryUI.instance.buttons == null)
+                return;
+            FieldInfo field = AccessTools.Field(typeof(CrateInventoryButton), "currentItem");
+            if (field == null)
+                return;
+
+            var seen = new List<ShipItem>();
+            CrateInventoryButton[] buttons = CrateInventoryUI.instance.buttons;
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                CrateInventoryButton button = buttons[i];
+                if (button == null)
+                    continue;
+                ShipItem shown = field.GetValue(button) as ShipItem;
+                if (shown == null)
+                    continue;
+                bool live = inventory.containedItems != null && inventory.containedItems.Contains(shown);
+                if (!live || seen.Contains(shown))
+                {
+                    field.SetValue(button, null);
+                    continue;
+                }
+
+                seen.Add(shown);
+            }
+        }
+
+        private static void ClearCrateSlot(ShipItem item)
+        {
+            if (item == null || CrateInventoryUI.instance == null || CrateInventoryUI.instance.buttons == null)
+                return;
+            FieldInfo field = AccessTools.Field(typeof(CrateInventoryButton), "currentItem");
+            if (field == null)
+                return;
+
+            CrateInventoryButton[] buttons = CrateInventoryUI.instance.buttons;
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                CrateInventoryButton button = buttons[i];
+                if (button != null && field.GetValue(button) as ShipItem == item)
+                    field.SetValue(button, null);
+            }
+        }
+
+        internal static void GatherLookedAtHook()
         {
             if (!FirewoodBundleConfig.HooksAreEnabled)
                 return;
@@ -396,21 +486,22 @@ namespace Dizzy.FirewoodBundle
             if (!Input.GetKeyDown(KeyCode.G))
                 return;
 
-            ShipItemCrate crate = LookedAtCrate();
-            if (crate == null)
-                crate = OpenCrate();
-            if (crate == null || !CanGather(crate))
+            ShipItem hook = LookedAtHook();
+            if (!CanGather(hook))
                 return;
 
-            Gather(crate);
+            Gather(OpenCrateHolding(hook));
         }
 
-        internal static bool CanGather(ShipItemCrate crate)
+        internal static bool CanGather(ShipItem hook)
         {
+            if (!IsSingleton(hook))
+                return false;
+            ShipItemCrate crate = OpenCrateHolding(hook);
             return crate != null && LooseHooks(crate) >= 2;
         }
 
-        private static ShipItemCrate LookedAtCrate()
+        private static ShipItem LookedAtHook()
         {
             GoPointer[] pointers = Object.FindObjectsOfType<GoPointer>();
             for (int i = 0; i < pointers.Length; i++)
@@ -418,59 +509,60 @@ namespace Dizzy.FirewoodBundle
                 GoPointer pointer = pointers[i];
                 if (pointer == null)
                     continue;
-                ShipItemCrate crate = pointer.GetPointedAtItem() as ShipItemCrate;
-                if (crate != null)
-                    return crate;
+
+                ShipItem item = HookOnSlot(PointedButton(pointer));
+                if (item == null)
+                    item = pointer.GetPointedAtItem();
+                if (IsSingleton(item))
+                    return item;
             }
 
             return null;
         }
 
-        private static ShipItemCrate OpenCrate()
+        private static GoPointerButton PointedButton(GoPointer pointer)
         {
-            if (CrateInventoryUI.instance == null || !CrateInventoryUI.instance.showingUI)
+            FieldInfo field = AccessTools.Field(typeof(GoPointer), "pointedAtButton");
+            if (field == null)
+                return null;
+            return field.GetValue(pointer) as GoPointerButton;
+        }
+
+        private static ShipItem HookOnSlot(GoPointerButton button)
+        {
+            CrateInventoryButton slot = button as CrateInventoryButton;
+            if (slot == null)
+                return null;
+            FieldInfo field = AccessTools.Field(typeof(CrateInventoryButton), "currentItem");
+            if (field == null)
+                return null;
+            return field.GetValue(slot) as ShipItem;
+        }
+
+        private static ShipItemCrate OpenCrateHolding(ShipItem hook)
+        {
+            if (hook == null || CrateInventoryUI.instance == null || !CrateInventoryUI.instance.showingUI)
                 return null;
             CrateInventory inventory = CrateInventoryUI.instance.currentCrate;
-            if (inventory == null)
+            if (inventory == null || inventory.containedItems == null || !inventory.containedItems.Contains(hook))
                 return null;
             return inventory.GetComponent<ShipItemCrate>();
         }
 
         private static int LooseHooks(ShipItemCrate crate)
         {
-            int count = SealedHooks(crate);
             CrateInventory inventory = crate.GetComponent<CrateInventory>();
             if (inventory == null || inventory.containedItems == null)
-                return count;
+                return 0;
 
+            int count = 0;
             for (int i = 0; i < inventory.containedItems.Count; i++)
             {
-                ShipItem item = inventory.containedItems[i];
-                if (IsSingleton(item))
+                if (IsSingleton(inventory.containedItems[i]))
                     count++;
             }
 
             return count;
-        }
-
-        private static int SealedHooks(ShipItemCrate crate)
-        {
-            if (crate.amount < 2f || IsMission(crate) || !IsHookPrefab(crate.GetContainedPrefab()))
-                return 0;
-            return Mathf.RoundToInt(crate.amount);
-        }
-
-        private static bool IsMission(ShipItemCrate crate)
-        {
-            Good good = crate.GetComponent<Good>();
-            return good != null && good.GetMissionIndex() != -1;
-        }
-
-        private static bool IsHookPrefab(GameObject prefab)
-        {
-            if (prefab == null)
-                return false;
-            return prefab.GetComponent<ShipItemFishingHook>() != null;
         }
 
         private static bool IsSingleton(ShipItem item)
@@ -481,12 +573,9 @@ namespace Dizzy.FirewoodBundle
         private static void Gather(ShipItemCrate crate)
         {
             CrateInventory inventory = crate.GetComponent<CrateInventory>();
-            if (inventory == null)
+            if (inventory == null || inventory.containedItems == null)
                 return;
-            if (inventory.containedItems == null)
-                inventory.containedItems = new List<ShipItem>();
 
-            int pending = SealedHooks(crate);
             var singles = new List<ShipItem>();
             for (int i = 0; i < inventory.containedItems.Count; i++)
             {
@@ -495,97 +584,40 @@ namespace Dizzy.FirewoodBundle
                     singles.Add(item);
             }
 
-            if (pending + singles.Count < 2)
+            if (singles.Count < 2)
                 return;
 
-            if (pending > 0)
-            {
-                crate.amount = 0f;
-                crate.UpdateLookText();
-                if (crate.itemRigidbodyC != null)
-                    crate.itemRigidbodyC.UpdateMass();
-                if (UISoundPlayer.instance != null)
-                    UISoundPlayer.instance.PlayUISound(UISounds.crateSealBreak, 1f, 1f);
-            }
-
             int bundled = 0;
-            while (pending + singles.Count >= 2)
+            while (singles.Count >= 2)
             {
-                int size = Mathf.Min(FirewoodBundleConfig.HookLimit, pending + singles.Count);
+                int size = Mathf.Min(FirewoodBundleConfig.HookLimit, singles.Count);
                 if (size < 2)
                     break;
 
-                ShipItem host = TakeHost(crate, inventory, ref pending, singles);
+                ShipItem host = singles[singles.Count - 1];
+                singles.RemoveAt(singles.Count - 1);
                 for (int extra = 1; extra < size; extra++)
-                    DiscardLoose(inventory, ref pending, singles);
+                {
+                    ShipItem loose = singles[singles.Count - 1];
+                    singles.RemoveAt(singles.Count - 1);
+                    inventory.WithdrawItem(loose);
+                    FirewoodPieces.Consume(loose);
+                }
 
                 WriteCount(host, size);
                 HookLineBuilder.Apply(host);
                 bundled += size;
             }
 
-            if (pending > 0)
-                TakeHost(crate, inventory, ref pending, singles);
-
             if (CrateInventoryUI.instance != null
                 && CrateInventoryUI.instance.showingUI
                 && CrateInventoryUI.instance.currentCrate == inventory)
             {
                 CrateInventoryUI.instance.RefreshButtons();
-            }
-            else if (bundled > 0)
-            {
-                inventory.OpenCrate();
+                ReleaseShrunkSlots(inventory);
             }
 
             Plugin.Log.LogInfo("Bundled " + bundled + " loose fishing hooks.");
-        }
-
-        private static ShipItem TakeHost(ShipItemCrate crate, CrateInventory inventory, ref int pending, List<ShipItem> singles)
-        {
-            if (singles.Count > 0)
-            {
-                ShipItem existing = singles[singles.Count - 1];
-                singles.RemoveAt(singles.Count - 1);
-                return existing;
-            }
-
-            pending--;
-            ShipItem spawned = SpawnFromCrate(crate);
-            inventory.InsertItem(spawned);
-            return spawned;
-        }
-
-        private static void DiscardLoose(CrateInventory inventory, ref int pending, List<ShipItem> singles)
-        {
-            if (singles.Count > 0)
-            {
-                ShipItem extra = singles[singles.Count - 1];
-                singles.RemoveAt(singles.Count - 1);
-                inventory.WithdrawItem(extra);
-                FirewoodPieces.Consume(extra);
-                return;
-            }
-
-            pending--;
-        }
-
-        private static ShipItem SpawnFromCrate(ShipItemCrate crate)
-        {
-            GameObject prefab = crate.GetContainedPrefab();
-            GameObject spawned = Object.Instantiate(prefab, crate.transform.position, crate.transform.rotation);
-            ShipItem hook = spawned.GetComponent<ShipItem>();
-            hook.sold = true;
-            SaveablePrefab saveable = hook.GetComponent<SaveablePrefab>();
-            SaveablePrefab crateSave = crate.GetComponent<SaveablePrefab>();
-            if (saveable != null)
-            {
-                if (crateSave != null)
-                    saveable.SetParentObject(crateSave.GetParentObject());
-                saveable.RegisterToSave();
-            }
-
-            return hook;
         }
     }
 }

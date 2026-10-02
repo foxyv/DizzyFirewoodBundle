@@ -25,6 +25,7 @@ namespace Dizzy.FirewoodBundle
             {
                 root.enabled = true;
                 IncludeInLod(item, new List<Renderer> { root });
+                ReleaseLod(item);
             }
 
             ShipItem prefab = FirewoodPieces.PrefabOf(item);
@@ -112,7 +113,10 @@ namespace Dizzy.FirewoodBundle
             item.lookText = HookLinePieces.LookText(count);
             item.description = "";
             ApplyMass(item, count);
-            FitLine(item, rack);
+            if (StoredInCrate(item))
+                CopyPrefabCollider(item);
+            else
+                FitLine(item, rack);
             EnsureHang(item);
             FirewoodBundleBuilder.QuietHull(item);
         }
@@ -482,15 +486,44 @@ namespace Dizzy.FirewoodBundle
             if (lods == null || lods.Length == 0)
                 return;
 
-            lods[0].renderers = renderers.ToArray();
+            // A crate draws the line very small. A lower LOD still points at the
+            // hidden original mesh, so the bundle vanishes inside the chest.
+            Renderer[] shown = renderers.ToArray();
+            for (int i = 0; i < lods.Length; i++)
+                lods[i].renderers = shown;
             try
             {
                 group.SetLODs(lods);
+                group.ForceLOD(0);
             }
             catch (System.Exception ex)
             {
                 Plugin.Log.LogWarning("Could not update hook line LOD: " + ex.Message);
             }
+        }
+
+        private static void ReleaseLod(ShipItem item)
+        {
+            LODGroup group = item.GetComponent<LODGroup>();
+            if (group == null)
+                return;
+            group.ForceLOD(-1);
+        }
+
+        private static bool StoredInCrate(ShipItem item)
+        {
+            SaveablePrefab save = item.GetComponent<SaveablePrefab>();
+            return save != null && save.currentCrateId != 0;
+        }
+
+        private static void CopyPrefabCollider(ShipItem item)
+        {
+            ShipItem prefab = FirewoodPieces.PrefabOf(item);
+            if (prefab == null)
+                return;
+            CopyColliderShape(prefab.gameObject, item.gameObject);
+            if (item.itemRigidbodyC != null)
+                CopyColliderShape(prefab.gameObject, item.itemRigidbodyC.gameObject);
         }
 
         private static void ApplyMass(ShipItem item, int count)

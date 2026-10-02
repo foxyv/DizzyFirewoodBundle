@@ -543,6 +543,7 @@ namespace Dizzy.FirewoodBundle
             if (HookLinePieces.IsHook(__instance))
             {
                 HookLinePieces.NotePickedUp();
+                HookLinePieces.ReleaseFromCrate(__instance);
                 if (HookLinePieces.IsLine(__instance) && HookLinePieces.CountOf(__instance) <= 1)
                     HookLineBuilder.RestoreSingle(__instance);
                 else
@@ -644,7 +645,7 @@ namespace Dizzy.FirewoodBundle
                         ___textRIcon.gameObject.SetActive(false);
                     if (___mouseRIcon != null)
                         ___mouseRIcon.enabled = false;
-                    OfferCrateGather(___controlsText, button);
+                    OfferCrateGather(___controlsText, item);
                     return;
                 }
 
@@ -666,7 +667,7 @@ namespace Dizzy.FirewoodBundle
 
             if (!FirewoodBundleConfig.IsEnabled)
             {
-                OfferCrateGather(___controlsText, button);
+                OfferCrateGather(___controlsText, item);
                 return;
             }
             if (FirewoodPieces.CanTarget(held, item))
@@ -689,7 +690,7 @@ namespace Dizzy.FirewoodBundle
                     ___textRIcon.gameObject.SetActive(false);
                 if (___mouseRIcon != null)
                     ___mouseRIcon.enabled = false;
-                OfferCrateGather(___controlsText, button);
+                OfferCrateGather(___controlsText, item);
                 return;
             }
 
@@ -707,23 +708,14 @@ namespace Dizzy.FirewoodBundle
                     ___textRIcon.gameObject.SetActive(true);
             }
 
-            OfferCrateGather(___controlsText, button);
+            OfferCrateGather(___controlsText, item);
         }
 
-        private static void OfferCrateGather(TextMesh controls, GoPointerButton button)
+        private static void OfferCrateGather(TextMesh controls, ShipItem item)
         {
             if (controls == null || !FirewoodBundleConfig.HooksAreEnabled)
                 return;
-
-            ShipItemCrate crate = button as ShipItemCrate;
-            if (crate == null && CrateInventoryUI.instance != null && CrateInventoryUI.instance.showingUI)
-            {
-                CrateInventory inventory = CrateInventoryUI.instance.currentCrate;
-                if (inventory != null)
-                    crate = inventory.GetComponent<ShipItemCrate>();
-            }
-
-            if (!HookLinePieces.CanGather(crate))
+            if (!HookLinePieces.CanGather(item))
                 return;
             if (controls.text != null && controls.text.IndexOf("G Bundle Hooks", System.StringComparison.Ordinal) >= 0)
                 return;

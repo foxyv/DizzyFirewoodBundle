@@ -48,7 +48,7 @@ namespace Dizzy.FirewoodBundle
         {
             FirewoodPieces.ReleaseHeldPiece();
             HookLinePieces.ReleaseHeldHook();
-            HookLinePieces.GatherLookedAtCrate();
+            HookLinePieces.GatherLookedAtHook();
         }
 
         private void OnDestroy()
