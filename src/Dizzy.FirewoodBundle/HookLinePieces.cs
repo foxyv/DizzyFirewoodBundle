@@ -10,6 +10,8 @@ namespace Dizzy.FirewoodBundle
         private static readonly RaycastHit[] Hits = new RaycastHit[32];
         private static readonly FieldInfo LampOccupiedField = AccessTools.Field(typeof(ShipItemLampHook), "occupied");
         private static readonly FieldInfo CurrentHookField = AccessTools.Field(typeof(HangableItem), "currentHook");
+        private static readonly FieldInfo SlotItemField = AccessTools.Field(typeof(CrateInventoryButton), "currentItem");
+        private static readonly FieldInfo PointedButtonField = AccessTools.Field(typeof(GoPointer), "pointedAtButton");
         private static readonly HashSet<int> ClaimedLamps = new HashSet<int>();
         private static float _pickedUpAt = -10f;
 
@@ -329,7 +331,8 @@ namespace Dizzy.FirewoodBundle
             return true;
         }
 
-        internal static ShipItem LineInFront(Ray ray, out float distance)
+        // The closest hook line on the ray. A wall, deck or crate lid in front of it wins.
+        internal static ShipItem LineInFront(ShipItem held, Ray ray, out float distance)
         {
             int count = Physics.RaycastNonAlloc(
                 ray,
@@ -339,18 +342,37 @@ namespace Dizzy.FirewoodBundle
                 QueryTriggerInteraction.Collide);
             ShipItem line = null;
             float nearest = float.MaxValue;
+            float blockedAt = float.MaxValue;
             for (int i = 0; i < count; i++)
             {
-                if (Hits[i].distance >= nearest)
+                float hitDistance = Hits[i].distance;
+                Collider collider = Hits[i].collider;
+                if (IsHeldCollider(held, collider))
                     continue;
-                ShipItem ship = Resolve(Hits[i].collider);
-                if (!IsLine(ship) || ship.unclickable)
+                ShipItem ship = Resolve(collider);
+                if (ship != null && ship == held)
                     continue;
-                nearest = Hits[i].distance;
-                line = ship;
+                if (IsLine(ship))
+                {
+                    if (!ship.unclickable && hitDistance < nearest)
+                    {
+                        nearest = hitDistance;
+                        line = ship;
+                    }
+                    continue;
+                }
+
+                if (collider != null && !collider.isTrigger && hitDistance < blockedAt)
+                    blockedAt = hitDistance;
             }
 
-            distance = line != null ? nearest : 0f;
+            if (line == null || nearest > blockedAt + 0.05f)
+            {
+                distance = 0f;
+                return null;
+            }
+
+            distance = nearest;
             return line;
         }
 
@@ -647,7 +669,7 @@ namespace Dizzy.FirewoodBundle
         {
             if (inventory == null || CrateInventoryUI.instance == null || CrateInventoryUI.instance.buttons == null)
                 return;
-            FieldInfo field = AccessTools.Field(typeof(CrateInventoryButton), "currentItem");
+            FieldInfo field = SlotItemField;
             if (field == null)
                 return;
 
@@ -676,7 +698,7 @@ namespace Dizzy.FirewoodBundle
         {
             if (item == null || CrateInventoryUI.instance == null || CrateInventoryUI.instance.buttons == null)
                 return;
-            FieldInfo field = AccessTools.Field(typeof(CrateInventoryButton), "currentItem");
+            FieldInfo field = SlotItemField;
             if (field == null)
                 return;
 
@@ -734,21 +756,17 @@ namespace Dizzy.FirewoodBundle
 
         private static GoPointerButton PointedButton(GoPointer pointer)
         {
-            FieldInfo field = AccessTools.Field(typeof(GoPointer), "pointedAtButton");
-            if (field == null)
+            if (PointedButtonField == null)
                 return null;
-            return field.GetValue(pointer) as GoPointerButton;
+            return PointedButtonField.GetValue(pointer) as GoPointerButton;
         }
 
-        private static ShipItem HookOnSlot(GoPointerButton button)
+        internal static ShipItem HookOnSlot(GoPointerButton button)
         {
             CrateInventoryButton slot = button as CrateInventoryButton;
-            if (slot == null)
+            if (slot == null || SlotItemField == null)
                 return null;
-            FieldInfo field = AccessTools.Field(typeof(CrateInventoryButton), "currentItem");
-            if (field == null)
-                return null;
-            return field.GetValue(slot) as ShipItem;
+            return SlotItemField.GetValue(slot) as ShipItem;
         }
 
         private static ShipItemCrate OpenCrateHolding(ShipItem hook)

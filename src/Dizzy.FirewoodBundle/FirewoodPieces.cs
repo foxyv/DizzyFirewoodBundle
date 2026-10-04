@@ -162,7 +162,7 @@ namespace Dizzy.FirewoodBundle
             return wood;
         }
 
-        private static bool IsHeldCollider(ShipItem held, Collider collider)
+        internal static bool IsHeldCollider(ShipItem held, Collider collider)
         {
             if (held == null || collider == null)
                 return false;

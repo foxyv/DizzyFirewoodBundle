@@ -11,7 +11,7 @@ namespace Dizzy.FirewoodBundle
     {
         public const string PluginGuid = "com.dizzy.sailwind.firewoodbundle";
         public const string PluginName = "Dizzy Firewood Bundle";
-        public const string PluginVersion = "0.3.1";
+        public const string PluginVersion = "0.3.2";
 
         internal static ManualLogSource Log;
         internal static Plugin Instance;
