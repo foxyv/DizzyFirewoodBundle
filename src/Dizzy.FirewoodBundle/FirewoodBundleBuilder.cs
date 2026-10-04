@@ -12,11 +12,12 @@ namespace Dizzy.FirewoodBundle
         private const string StringName = "FirewoodBundleString";
         private const string KnotName = "FirewoodBundleKnot";
         private const string BoxMeshName = "FirewoodBundleBox";
+        private const float RibbonThickness = 0.0016f;
 
         private static readonly Dictionary<int, int> Stamps = new Dictionary<int, int>();
         private static readonly Dictionary<int, int> HullStamps = new Dictionary<int, int>();
         private static readonly Dictionary<int, Mesh> BoxMeshes = new Dictionary<int, Mesh>();
-        private static Material _stringMaterial;
+        private static readonly Dictionary<string, Material> StringMaterials = new Dictionary<string, Material>();
 
         internal static void RestoreSingle(ShipItem item)
         {
@@ -146,7 +147,8 @@ namespace Dizzy.FirewoodBundle
                 longAxis = 2;
             }
 
-            float pitch = cross * 0.97f;
+            BundleKind kind = FirewoodPieces.KindOf(item);
+            float pitch = cross * (kind != null ? kind.Pitch : 0.97f);
             List<Vector3> centers = FirewoodPieces.Centers(count, pitch, longAxis);
             ClearSticks(item);
             if (mesh != null && source != null)
@@ -165,7 +167,7 @@ namespace Dizzy.FirewoodBundle
                 IncludeInLod(item, renderers);
             }
 
-            item.lookText = FirewoodPieces.LookText(count);
+            item.lookText = FirewoodPieces.LookText(item, count);
             ShipItem prefab = FirewoodPieces.PrefabOf(item);
             if (prefab != null)
                 item.description = prefab.description;
@@ -253,6 +255,27 @@ namespace Dizzy.FirewoodBundle
             return renderer;
         }
 
+        // A new tie color only swaps the material on the tie and the knot.
+        internal static void Recolor(ShipItem item)
+        {
+            if (item == null || FirewoodPieces.CountOf(item) <= 1)
+                return;
+            Material material = StringMaterial(FirewoodPieces.KindOf(item), FirewoodPieces.ColorOf(item));
+            if (material == null)
+                return;
+
+            Transform transform = item.transform;
+            for (int i = 0; i < transform.childCount; i++)
+            {
+                Transform child = transform.GetChild(i);
+                if (child.name != StringName && child.name != KnotName)
+                    continue;
+                MeshRenderer renderer = child.GetComponent<MeshRenderer>();
+                if (renderer != null)
+                    renderer.sharedMaterial = material;
+            }
+        }
+
         internal static void SyncOutline(ShipItem item)
         {
             if (item == null || FirewoodPieces.CountOf(item) <= 1)
@@ -291,12 +314,16 @@ namespace Dizzy.FirewoodBundle
             if (item == null || centers == null || centers.Count < 2 || logMesh == null)
                 return null;
 
-            Material material = StringMaterial();
+            BundleKind kind = FirewoodPieces.KindOf(item);
+            Material material = StringMaterial(kind, FirewoodPieces.ColorOf(item));
             if (material == null)
                 return null;
 
             Bounds bundle = BundleBounds(centers, logMesh);
-            float cord = Mathf.Clamp(cross * 0.055f, 0.0032f, 0.0075f);
+            bool ribbon = kind != null && kind.Ribbon;
+            float ribbonWidth = Mathf.Clamp(cross * 0.55f, 0.008f, 0.025f);
+            // A flat ribbon hugs the pieces. The loop runs through its middle.
+            float cord = ribbon ? RibbonThickness * 0.5f + 0.0005f : Mathf.Clamp(cross * 0.055f, 0.0032f, 0.0075f);
             int axisA = (longAxis + 1) % 3;
             int axisB = (longAxis + 2) % 3;
             float halfA = bundle.size[axisA] * 0.5f + cord;
@@ -308,7 +335,9 @@ namespace Dizzy.FirewoodBundle
             List<Vector3> loop = PartialTopLoop(centers, logMesh, bundle.center, axisA, axisB, cord, cross);
             if (loop == null)
                 loop = StringLoop(bundle.center, axisA, axisB, halfA, halfB, corner, cross);
-            Mesh cordMesh = CordMesh(loop, longAxis, cord);
+            Mesh cordMesh = ribbon
+                ? BandMesh(loop, longAxis, RibbonThickness * 0.5f, ribbonWidth * 0.5f)
+                : CordMesh(loop, longAxis, cord);
             if (cordMesh == null)
                 return null;
 
@@ -351,9 +380,11 @@ namespace Dizzy.FirewoodBundle
             if (item == null || centers == null || centers.Count < 2 || logMesh == null)
                 return null;
 
-            Material material = StringMaterial();
+            BundleKind kind = FirewoodPieces.KindOf(item);
+            Material material = StringMaterial(kind, FirewoodPieces.ColorOf(item));
             if (material == null)
                 return null;
+            bool ribbon = kind != null && kind.Ribbon;
 
             int axisA = (longAxis + 1) % 3;
             int upAxis = (longAxis + 2) % 3;
@@ -388,9 +419,19 @@ namespace Dizzy.FirewoodBundle
             origin[upAxis] = topRow + logMesh.bounds.max[upAxis];
             var left = new List<Vector3> { origin, origin - along * spread + up * rise };
             var right = new List<Vector3> { origin, origin + along * spread + up * rise };
-            Mesh knotMesh = JoinCords(
-                CordMesh(left, axisA, cord, false, KnotName),
-                CordMesh(right, axisA, cord, false, KnotName));
+            Mesh knotMesh;
+            if (ribbon)
+            {
+                Vector3 side = Vector3.zero;
+                side[axisA] = 1f;
+                knotMesh = BowMesh(origin, up, side, longAxis, axisA, cross);
+            }
+            else
+            {
+                knotMesh = JoinCords(
+                    CordMesh(left, axisA, cord, false, KnotName),
+                    CordMesh(right, axisA, cord, false, KnotName));
+            }
             if (knotMesh == null)
                 return null;
 
@@ -419,6 +460,68 @@ namespace Dizzy.FirewoodBundle
             }
 
             return renderer;
+        }
+
+        // A shoelace bow on top of the ribbon: two loops that stand up and lean out
+        // along the ribbon, two tails that lie low under them, and a wrap in the middle.
+        // The ribbon's width runs along the pieces, like the band it is tied from.
+        private static Mesh BowMesh(Vector3 origin, Vector3 up, Vector3 side, int longAxis, int axisA, float cross)
+        {
+            float half = RibbonThickness * 0.5f;
+            float width = Mathf.Clamp(cross * 0.45f, 0.007f, 0.02f);
+            float loopLength = Mathf.Clamp(cross * 1.2f, 0.025f, 0.06f);
+            float tailLength = loopLength * 1.15f;
+            Vector3 lift = up * half;
+
+            Mesh bow = null;
+            for (int s = -1; s <= 1; s += 2)
+            {
+                Vector3 outward = side * s;
+                bow = JoinCords(bow, BandMesh(BowLoop(origin + lift, outward, up, loopLength), longAxis, half, width * 0.5f, true, KnotName));
+
+                // A tail leaves the knot, dips onto the top of the bundle and runs out
+                // under its loop, with a small kick up at the cut end.
+                var tail = new List<Vector3>(6);
+                for (int i = 0; i <= 5; i++)
+                {
+                    float t = i / 5f;
+                    float height = Mathf.Lerp(width * 0.18f, 0f, Mathf.Min(1f, t * 2.5f)) + Mathf.Max(0f, t - 0.75f) * width * 0.5f;
+                    tail.Add(origin + lift + outward * (tailLength * t) + up * height);
+                }
+                bow = JoinCords(bow, BandMesh(tail, longAxis, half, width * 0.42f, false, KnotName));
+            }
+
+            // The wrap that holds the loops: a short band around the crossing.
+            float wrapRadius = Mathf.Max(width * 0.22f, half * 3f);
+            var wrap = new List<Vector3>(10);
+            for (int i = 0; i < 10; i++)
+            {
+                float angle = i * Mathf.PI * 2f / 10f;
+                wrap.Add(origin + lift + up * (wrapRadius * 0.9f) + up * (Mathf.Sin(angle) * wrapRadius) + side * (Mathf.Cos(angle) * wrapRadius * 0.7f));
+            }
+            bow = JoinCords(bow, BandMesh(wrap, longAxis, half, width * 0.32f, true, KnotName));
+            return bow;
+        }
+
+        // One petal of the bow, starting and ending at the knot. It is tipped up
+        // so its lower edge stays clear of the pieces under it.
+        private static List<Vector3> BowLoop(Vector3 knot, Vector3 outward, Vector3 up, float length)
+        {
+            const int steps = 16;
+            float bulge = length * 0.62f;
+            float tilt = 38f * Mathf.Deg2Rad;
+            Vector3 axis = outward * Mathf.Cos(tilt) + up * Mathf.Sin(tilt);
+            Vector3 across = up * Mathf.Cos(tilt) - outward * Mathf.Sin(tilt);
+            var loop = new List<Vector3>(steps);
+            for (int i = 0; i < steps; i++)
+            {
+                float s = i / (float)steps;
+                float u = length * Mathf.Sin(Mathf.PI * s);
+                float v = bulge * 0.5f * Mathf.Sin(Mathf.PI * 2f * s);
+                loop.Add(knot + axis * u + across * v);
+            }
+
+            return loop;
         }
 
         private static List<Vector3> StringLoop(
@@ -764,6 +867,80 @@ namespace Dizzy.FirewoodBundle
             return mesh;
         }
 
+        // A flat band along the loop: thin across the loop, wide along frameAxis.
+        // Each face gets its own vertices so the ribbon shades flat.
+        private static Mesh BandMesh(List<Vector3> loop, int frameAxis, float halfThick, float halfWidth, bool closed = true, string meshName = null)
+        {
+            int count = loop.Count;
+            if (count < (closed ? 3 : 2))
+                return null;
+
+            const int faces = 4;
+            int segments = closed ? count : count - 1;
+            Vector3 frame = Vector3.zero;
+            frame[frameAxis] = 1f;
+            var vertices = new Vector3[count * faces * 2];
+            var normals = new Vector3[vertices.Length];
+            var triangles = new int[segments * faces * 6];
+            Vector3 outward = Vector3.zero;
+
+            for (int i = 0; i < count; i++)
+            {
+                int previousIndex = closed ? (i + count - 1) % count : Mathf.Max(0, i - 1);
+                int nextIndex = closed ? (i + 1) % count : Mathf.Min(count - 1, i + 1);
+                Vector3 tangent = loop[nextIndex] - loop[previousIndex];
+                if (tangent.sqrMagnitude > 0.0000001f)
+                    tangent.Normalize();
+                else
+                    tangent = frame;
+
+                Vector3 side = Vector3.Cross(tangent, frame);
+                if (side.sqrMagnitude > 0.0000001f)
+                    outward = side.normalized;
+
+                Vector3 o = outward * halfThick;
+                Vector3 w = frame * halfWidth;
+                // Corners go around the cross-section; each face uses two of them.
+                Vector3[] corners = { o - w, o + w, -o + w, -o - w };
+                Vector3[] faceNormals = { outward, frame, -outward, -frame };
+                for (int f = 0; f < faces; f++)
+                {
+                    int index = (i * faces + f) * 2;
+                    vertices[index] = loop[i] + corners[f];
+                    vertices[index + 1] = loop[i] + corners[(f + 1) % faces];
+                    normals[index] = faceNormals[f];
+                    normals[index + 1] = faceNormals[f];
+                }
+            }
+
+            int t = 0;
+            for (int i = 0; i < segments; i++)
+            {
+                int next = closed ? (i + 1) % count : i + 1;
+                for (int f = 0; f < faces; f++)
+                {
+                    int i0 = (i * faces + f) * 2;
+                    int i1 = i0 + 1;
+                    int i2 = (next * faces + f) * 2;
+                    int i3 = i2 + 1;
+                    triangles[t++] = i0;
+                    triangles[t++] = i2;
+                    triangles[t++] = i1;
+                    triangles[t++] = i1;
+                    triangles[t++] = i2;
+                    triangles[t++] = i3;
+                }
+            }
+
+            var mesh = new Mesh();
+            mesh.name = string.IsNullOrEmpty(meshName) ? StringName : meshName;
+            mesh.vertices = vertices;
+            mesh.normals = normals;
+            mesh.triangles = triangles;
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
         private static Mesh JoinCords(Mesh first, Mesh second)
         {
             if (first == null)
@@ -799,10 +976,16 @@ namespace Dizzy.FirewoodBundle
             return mesh;
         }
 
-        private static Material StringMaterial()
+        private static Material StringMaterial(BundleKind kind, int color)
         {
-            if (_stringMaterial != null)
-                return _stringMaterial;
+            if (kind == null)
+                kind = BundleKind.Firewood;
+            if (color < 0 || color >= kind.ColorCount)
+                color = 0;
+            string key = kind.BundleName + "/" + color;
+            Material cached;
+            if (StringMaterials.TryGetValue(key, out cached) && cached != null)
+                return cached;
 
             Shader shader = Shader.Find("Standard");
             if (shader == null)
@@ -811,20 +994,22 @@ namespace Dizzy.FirewoodBundle
                 shader = Shader.Find("Unlit/Color");
             if (shader == null)
             {
-                Plugin.Log.LogWarning("Could not find a shader for the firewood bundle string.");
+                Plugin.Log.LogWarning("Could not find a shader for the " + kind.BundleName + " tie.");
                 return null;
             }
 
-            _stringMaterial = new Material(shader);
-            _stringMaterial.name = StringName;
-            _stringMaterial.color = new Color(0.55f, 0.38f, 0.2f);
+            var material = new Material(shader);
+            material.name = StringName;
+            material.color = kind.Colors[color];
             if (shader.name == "Standard")
             {
-                _stringMaterial.SetFloat("_Metallic", 0f);
-                _stringMaterial.SetFloat("_Glossiness", 0.12f);
+                material.SetFloat("_Metallic", 0f);
+                // A ribbon is satin, a little shinier than cord.
+                material.SetFloat("_Glossiness", kind.Ribbon ? 0.35f : 0.12f);
             }
 
-            return _stringMaterial;
+            StringMaterials[key] = material;
+            return material;
         }
 
         private static void ReleaseStringMesh(ShipItem item)
@@ -870,7 +1055,7 @@ namespace Dizzy.FirewoodBundle
             }
             catch (System.Exception ex)
             {
-                Plugin.Log.LogWarning("Could not update firewood bundle LOD: " + ex.Message);
+                Plugin.Log.LogWarning("Could not update bundle LOD: " + ex);
             }
         }
 

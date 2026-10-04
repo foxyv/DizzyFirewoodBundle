@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
 
@@ -11,14 +12,31 @@ namespace Dizzy.FirewoodBundle
         internal const float Reach = 1.8f;
 
         private static readonly RaycastHit[] Hits = new RaycastHit[32];
+        private static readonly FieldInfo LanternInitialHealthField = AccessTools.Field(typeof(ShipItemLight), "initialHealth");
 
         private static float _pickedUpAt = -10f;
 
+        // Firewood or a candle: anything that ties into a two-handed bundle.
         internal static bool IsPiece(Component component)
         {
-            ShipItem ship = AsShip(component);
-            // A cargo crate of firewood uses the same name as a loose log.
-            return ship != null && ship.name == ItemName && !(ship is ShipItemCrate);
+            return KindOf(component) != null;
+        }
+
+        internal static BundleKind KindOf(Component component)
+        {
+            return BundleKind.Of(AsShip(component));
+        }
+
+        internal static bool IsFirewood(Component component)
+        {
+            return KindOf(component) == BundleKind.Firewood;
+        }
+
+        // A piece whose kind is turned on in the config.
+        internal static bool IsActive(Component component)
+        {
+            BundleKind kind = KindOf(component);
+            return kind != null && kind.IsEnabled;
         }
 
         internal static ShipItem AsShip(Component component)
@@ -31,26 +49,87 @@ namespace Dizzy.FirewoodBundle
             return component.GetComponent<ShipItem>();
         }
 
+        // A bundle saves its count and tie color in the item's amount, which the game
+        // already saves: amount = single + (count - 1) + color * ColorStride.
+        internal const int ColorStride = 1000;
+
         internal static int CountOf(ShipItem item)
         {
             if (!IsPiece(item))
                 return 0;
-            int stored = Mathf.RoundToInt(item.amount);
-            int single = SingleAmount(item);
-            if (stored <= single)
+            int extra = Mathf.RoundToInt(item.amount) - SingleAmount(item);
+            if (extra <= 0)
                 return 1;
-            return stored - single + 1;
+            return extra % ColorStride + 1;
         }
 
+        internal static int ColorOf(ShipItem item)
+        {
+            BundleKind kind = KindOf(item);
+            if (kind == null)
+                return 0;
+            int extra = Mathf.RoundToInt(item.amount) - SingleAmount(item);
+            if (extra <= 0)
+                return 0;
+            int color = extra / ColorStride;
+            return color < kind.ColorCount ? color : 0;
+        }
+
+        // Keeps the bundle's tie color. A single piece has no tie, so it has no color.
         internal static void WriteCount(ShipItem item, int count)
         {
-            int single = SingleAmount(item);
-            item.amount = count <= 1 ? single : single + (count - 1);
+            WriteCount(item, count, ColorOf(item));
         }
 
-        internal static string LookText(int count)
+        private static void WriteCount(ShipItem item, int count, int color)
         {
-            return "firewood bundle\n" + count + " firewood";
+            int single = SingleAmount(item);
+            item.amount = count <= 1 ? single : single + (count - 1) + color * ColorStride;
+        }
+
+        // \ while holding or looking at a bundle ties it with the next color.
+        internal static void CycleLookedAtColor()
+        {
+            if (!BundleKind.AnyEnabled)
+                return;
+            if (GameState.inCursorMenu || GameState.sleeping || BoatCamera.on)
+                return;
+            if (!Input.GetKeyDown(FirewoodBundleConfig.ColorKeyCode))
+                return;
+
+            GoPointer[] pointers = Object.FindObjectsOfType<GoPointer>();
+            for (int i = 0; i < pointers.Length; i++)
+            {
+                GoPointer pointer = pointers[i];
+                if (pointer == null)
+                    continue;
+                ShipItem bundle = AsShip(pointer.GetHeldItem());
+                if (bundle == null)
+                    bundle = pointer.GetPointedAtItem();
+                if (!IsActive(bundle) || CountOf(bundle) <= 1)
+                    continue;
+
+                BundleKind kind = KindOf(bundle);
+                int color = (ColorOf(bundle) + 1) % kind.ColorCount;
+                WriteCount(bundle, CountOf(bundle), color);
+                FirewoodBundleBuilder.Recolor(bundle);
+                Plugin.Log.LogInfo(kind.BundleName + " " + kind.TieName.ToLowerInvariant() + " is now " + kind.ColorNames[color].ToLowerInvariant() + ".");
+                return;
+            }
+        }
+
+        internal static string ColorPrompt(ShipItem bundle)
+        {
+            BundleKind kind = KindOf(bundle);
+            if (kind == null)
+                return "";
+            return FirewoodBundleConfig.ColorKeyLabel + " " + kind.TieName + ": " + kind.ColorNames[ColorOf(bundle)];
+        }
+
+        internal static string LookText(ShipItem item, int count)
+        {
+            BundleKind kind = KindOf(item);
+            return kind != null ? kind.LookText(count) : "";
         }
 
         internal static void NotePickedUp()
@@ -60,9 +139,8 @@ namespace Dizzy.FirewoodBundle
 
         internal static bool CanTarget(ShipItem held, ShipItem target)
         {
-            if (!FirewoodBundleConfig.IsEnabled)
-                return false;
-            if (!IsPiece(held) || !IsPiece(target) || held == target)
+            BundleKind kind = KindOf(held);
+            if (kind == null || !kind.IsEnabled || KindOf(target) != kind || held == target)
                 return false;
             if (!held.sold || !target.sold || target.unclickable)
                 return false;
@@ -85,7 +163,8 @@ namespace Dizzy.FirewoodBundle
 
         internal static bool Fits(ShipItem template, int count)
         {
-            return count <= FirewoodBundleConfig.PieceLimit;
+            BundleKind kind = KindOf(template);
+            return kind != null && count <= kind.Limit;
         }
 
         internal static float CrossDiameter(List<Vector3> centers, int longAxis, float cross)
@@ -177,7 +256,7 @@ namespace Dizzy.FirewoodBundle
 
         internal static bool TryGlue(ShipItem held)
         {
-            if (!FirewoodBundleConfig.IsEnabled || !IsPiece(held) || held.held == null)
+            if (!IsActive(held) || held.held == null)
                 return false;
 
             GoPointer pointer = held.held;
@@ -193,7 +272,7 @@ namespace Dizzy.FirewoodBundle
             if (count < 2 || !Fits(target, count))
             {
                 if (count >= 2)
-                    Plugin.Log.LogInfo("Firewood bundle already holds " + FirewoodBundleConfig.PieceLimit + " firewood.");
+                    Plugin.Log.LogInfo("A " + KindOf(target).BundleName + " already holds " + KindOf(target).Limit + " " + KindOf(target).Plural + ".");
                 return false;
             }
 
@@ -211,11 +290,11 @@ namespace Dizzy.FirewoodBundle
             catch (System.Exception ex)
             {
                 held.amount = previousAmount;
-                Plugin.Log.LogError("Could not bundle firewood: " + ex);
+                Plugin.Log.LogError("Could not tie a " + KindOf(held).BundleName + ": " + ex);
                 return false;
             }
 
-            Plugin.Log.LogInfo("Bundled " + count + " firewood.");
+            Plugin.Log.LogInfo("Bundled " + count + " " + KindOf(held).Plural + ".");
             return true;
         }
 
@@ -274,18 +353,18 @@ namespace Dizzy.FirewoodBundle
             catch (System.Exception ex)
             {
                 pile.amount = previousAmount;
-                Plugin.Log.LogError("Could not add firewood to the pile: " + ex);
+                Plugin.Log.LogError("Could not add to the " + KindOf(pile).BundleName + ": " + ex);
                 return false;
             }
 
-            Plugin.Log.LogInfo("Added firewood to the pile. It now holds " + count + ".");
+            Plugin.Log.LogInfo("Added to the " + KindOf(pile).BundleName + ". It now holds " + count + ".");
             return true;
         }
 
         // A stove click on a bundle feeds one loose log and leaves the rest held.
         internal static bool TryFeedOneLog(ShipItem bundle, StoveFuelTrigger trigger)
         {
-            if (!FirewoodBundleConfig.IsEnabled || trigger == null || CountOf(bundle) <= 1)
+            if (!FirewoodBundleConfig.IsEnabled || !IsFirewood(bundle) || trigger == null || CountOf(bundle) <= 1)
                 return false;
 
             ShipItem log = SpawnSingle(bundle);
@@ -302,7 +381,7 @@ namespace Dizzy.FirewoodBundle
             }
             catch (System.Exception ex)
             {
-                Plugin.Log.LogError("Could not feed the stove: " + ex.Message);
+                Plugin.Log.LogError("Could not feed the stove: " + ex);
                 Object.Destroy(log.gameObject);
                 return false;
             }
@@ -335,11 +414,11 @@ namespace Dizzy.FirewoodBundle
             return true;
         }
 
-        // Right-click a bundle sitting in the world, nailed or not, to take one log.
-        // The bundle stays where it is. A held stack only grows when the click hits more firewood.
+        // Right-click a bundle sitting in the world, nailed or not, to take one piece.
+        // The bundle stays where it is. A held stack only grows when the click hits another piece.
         internal static bool TrySplit(ShipItem bundle)
         {
-            if (!FirewoodBundleConfig.IsEnabled || bundle == null || CountOf(bundle) <= 1)
+            if (!IsActive(bundle) || CountOf(bundle) <= 1)
                 return false;
             if (bundle.held != null)
                 return false;
@@ -394,7 +473,7 @@ namespace Dizzy.FirewoodBundle
                 FirewoodBundleBuilder.Apply(bundle);
 
             pointer.PickUpItem(log);
-            Plugin.Log.LogInfo("Took 1 firewood. " + left + " left in the bundle.");
+            Plugin.Log.LogInfo("Took 1 from the " + KindOf(bundle).BundleName + ". " + left + " left.");
             return true;
         }
 
@@ -441,7 +520,7 @@ namespace Dizzy.FirewoodBundle
         // Left click still drops the held piece. Right click is what glues.
         internal static void ReleaseHeldPiece()
         {
-            if (!FirewoodBundleConfig.IsEnabled)
+            if (!BundleKind.AnyEnabled)
                 return;
             if (GameState.inCursorMenu || GameState.sleeping || BoatCamera.on)
                 return;
@@ -475,6 +554,115 @@ namespace Dizzy.FirewoodBundle
                 held.OnDrop();
                 pointer.DropItem();
             }
+        }
+
+        // A candle lantern click with a bundle loads one candle and keeps the rest in hand.
+        // A lantern that is already full keeps its candle, so nothing is used up.
+        internal static bool TryLightLantern(ShipItem bundle, ShipItemLight lantern)
+        {
+            if (lantern == null || lantern.usesOil || KindOf(bundle) != BundleKind.Candle || !bundle.sold)
+                return false;
+            if (!BundleKind.Candle.IsEnabled || CountOf(bundle) <= 1)
+                return false;
+
+            float full = LanternInitialHealthField != null ? (float)LanternInitialHealthField.GetValue(lantern) : 0f;
+            if (full <= 0f || lantern.health >= full)
+                return true;
+
+            lantern.health = full;
+            UISoundPlayer.instance.PlayUISound(UISounds.itemInventoryIn, 0.5f, 0.5f);
+
+            int left = CountOf(bundle) - 1;
+            WriteCount(bundle, left);
+            if (left <= 1)
+                FirewoodBundleBuilder.RestoreSingle(bundle);
+            else
+                FirewoodBundleBuilder.Apply(bundle);
+
+            Plugin.Log.LogInfo("Lantern took 1 candle. " + left + " left in the bundle.");
+            return true;
+        }
+
+        // G on a loose piece in an open crate picks up a bundle of that crate's loose pieces.
+        // A bundle is two-handed, and a crate will not hold one, so it goes straight to hand.
+        internal static void GatherLookedAtPiece()
+        {
+            if (!BundleKind.AnyEnabled)
+                return;
+            if (GameState.inCursorMenu || GameState.sleeping || BoatCamera.on)
+                return;
+            if (!Input.GetKeyDown(KeyCode.G))
+                return;
+
+            GoPointer[] pointers = Object.FindObjectsOfType<GoPointer>();
+            for (int i = 0; i < pointers.Length; i++)
+            {
+                GoPointer pointer = pointers[i];
+                if (pointer == null || pointer.GetHeldItem() != null)
+                    continue;
+                ShipItem piece = CrateSlots.ItemOnSlot(CrateSlots.PointedButton(pointer));
+                if (!CanGatherPiece(piece))
+                    continue;
+                Gather(piece, pointer);
+                return;
+            }
+        }
+
+        internal static bool CanGatherPiece(ShipItem piece)
+        {
+            if (!IsActive(piece) || CountOf(piece) > 1)
+                return false;
+            CrateInventory inventory = CrateSlots.OpenCrateHolding(piece);
+            return inventory != null && LoosePieces(inventory, KindOf(piece), piece).Count >= 1;
+        }
+
+        private static List<ShipItem> LoosePieces(CrateInventory inventory, BundleKind kind, ShipItem except)
+        {
+            var loose = new List<ShipItem>();
+            if (inventory == null || inventory.containedItems == null)
+                return loose;
+            for (int i = 0; i < inventory.containedItems.Count; i++)
+            {
+                ShipItem item = inventory.containedItems[i];
+                if (item != null && item != except && KindOf(item) == kind && CountOf(item) <= 1)
+                    loose.Add(item);
+            }
+
+            return loose;
+        }
+
+        private static void Gather(ShipItem piece, GoPointer pointer)
+        {
+            CrateInventory inventory = CrateSlots.OpenCrateHolding(piece);
+            BundleKind kind = KindOf(piece);
+            List<ShipItem> loose = LoosePieces(inventory, kind, piece);
+            int size = Mathf.Min(kind.Limit, loose.Count + 1);
+            if (size < 2)
+                return;
+
+            for (int extra = 1; extra < size; extra++)
+            {
+                ShipItem other = loose[loose.Count - extra];
+                inventory.WithdrawItem(other);
+                CrateSlots.ClearCrateSlot(other);
+                Consume(other);
+            }
+
+            // Vanilla takes an item out of a crate with WithdrawItem, then PickUpItem.
+            // Put it at the hold point first so the two-handed grip is not set from the crate.
+            inventory.WithdrawItem(piece);
+            CrateSlots.ClearCrateSlot(piece);
+            ShipItem template = PrefabOf(piece);
+            float distance = template != null ? template.holdDistance : 0.4f;
+            float height = template != null ? template.holdHeight : 0f;
+            piece.transform.position = pointer.transform.position + pointer.transform.forward * distance + pointer.transform.up * height;
+            piece.transform.rotation = pointer.transform.rotation;
+            pointer.PickUpItem(piece);
+
+            WriteCount(piece, size);
+            FirewoodBundleBuilder.Apply(piece);
+            CrateSlots.Refresh(inventory);
+            Plugin.Log.LogInfo("Picked up a " + kind.BundleName + " of " + size + " " + kind.Plural + " from the crate.");
         }
 
         internal static List<Vector3> Centers(int count, float pitch, int longAxis)
