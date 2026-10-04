@@ -945,7 +945,9 @@ namespace Dizzy.FirewoodBundle
 
             if (count > 1 && held == null)
             {
-                ___controlsText.text = (item.nailed ? "\ntake" : "pick up\ntake") + "\n" + FirewoodPieces.ColorPrompt(item);
+                string remove = "Remove " + FirewoodPieces.KindOf(item).Single;
+                ___controlsText.text = item.nailed ? "\n" + remove : "pick up\n" + remove;
+                AddPrompt(___controlsText, FirewoodPieces.ColorPrompt(item));
                 if (item.nailed)
                 {
                     if (___textLicon != null)
@@ -994,11 +996,30 @@ namespace Dizzy.FirewoodBundle
                 AddPrompt(controls, FirewoodPieces.KindOf(item).GatherPrompt);
         }
 
+        // The first two lines sit beside the left- and right-click icons. An extra line
+        // must not move them, so pad the side the text grows from to match its anchor.
         private static void AddPrompt(TextMesh controls, string prompt)
         {
-            if (controls.text != null && controls.text.IndexOf(prompt, System.StringComparison.Ordinal) >= 0)
+            string text = controls.text ?? "";
+            if (text.IndexOf(prompt, System.StringComparison.Ordinal) >= 0)
                 return;
-            controls.text = (controls.text ?? "") + "\n" + prompt;
+
+            switch (controls.anchor)
+            {
+                case TextAnchor.LowerLeft:
+                case TextAnchor.LowerCenter:
+                case TextAnchor.LowerRight:
+                    controls.text = prompt + "\n" + text;
+                    break;
+                case TextAnchor.MiddleLeft:
+                case TextAnchor.MiddleCenter:
+                case TextAnchor.MiddleRight:
+                    controls.text = "\n" + text + "\n" + prompt;
+                    break;
+                default:
+                    controls.text = text + "\n" + prompt;
+                    break;
+            }
         }
     }
 
