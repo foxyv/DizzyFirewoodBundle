@@ -1,4 +1,5 @@
 using BepInEx.Configuration;
+using UnityEngine;
 
 namespace Dizzy.FirewoodBundle
 {
@@ -6,6 +7,9 @@ namespace Dizzy.FirewoodBundle
     {
         internal static ConfigEntry<bool> Enabled;
         internal static ConfigEntry<int> MaxPieces;
+        internal static ConfigEntry<KeyCode> ColorKey;
+        internal static ConfigEntry<bool> CandlesEnabled;
+        internal static ConfigEntry<int> MaxCandles;
         internal static ConfigEntry<bool> HooksEnabled;
         internal static ConfigEntry<int> MaxHooks;
         internal static ConfigEntry<float> HookMessiness;
@@ -21,6 +25,26 @@ namespace Dizzy.FirewoodBundle
         internal static int PieceLimit
         {
             get { return MaxPieces != null ? MaxPieces.Value : 100; }
+        }
+
+        internal static KeyCode ColorKeyCode
+        {
+            get { return ColorKey != null ? ColorKey.Value : KeyCode.Backslash; }
+        }
+
+        internal static string ColorKeyLabel
+        {
+            get { return ColorKeyCode == KeyCode.Backslash ? "\\" : ColorKeyCode.ToString(); }
+        }
+
+        internal static bool CandlesAreEnabled
+        {
+            get { return CandlesEnabled == null || CandlesEnabled.Value; }
+        }
+
+        internal static int CandleLimit
+        {
+            get { return MaxCandles != null ? MaxCandles.Value : 24; }
         }
 
         internal static bool HooksAreEnabled
@@ -59,13 +83,33 @@ namespace Dizzy.FirewoodBundle
                 "General",
                 "Stack Firewood",
                 LegacyBool(config, "General", "Enabled", true),
-                "Glue logs into a bundle when you right-click one log with another. Turn this off to leave firewood alone. Fishing hooks keep working.");
+                "Glue logs into a bundle when you right-click one log with another. Look at a loose log in an open crate and press G to pick up a bundle of the loose logs. Turn this off to leave firewood alone. Candles and fishing hooks keep working.");
 
             MaxPieces = config.Bind(
                 "General",
                 "MaxPieces",
                 100,
                 "Most logs a bundle can hold. They pack in a square grid, as close to square as the count allows. 100 logs is 10 by 10.");
+
+            ColorKey = config.Bind(
+                "General",
+                "Tie Color Key",
+                KeyCode.Backslash,
+                "Hold or look at a firewood or candle bundle and press this key to tie it with the next color. Firewood starts on brown cord, candles on a red ribbon.");
+
+            CandlesEnabled = config.Bind(
+                "Candles",
+                "Enabled",
+                true,
+                "Hold a candle and right-click another candle to tie them into a bundle with a red ribbon. Click a candle lantern with the bundle to load one candle. Look at a loose candle in an open crate and press G to pick up a bundle of the loose candles.");
+
+            MaxCandles = config.Bind(
+                "Candles",
+                "MaxCandles",
+                24,
+                new ConfigDescription(
+                    "Most candles a bundle can hold. They pack in a square grid, as close to square as the count allows.",
+                    new AcceptableValueRange<int>(2, 100)));
 
             HooksEnabled = config.Bind(
                 "Hooks",

@@ -12,8 +12,8 @@ namespace Dizzy.FirewoodBundle
     {
         private static readonly RaycastHit[] Hits = new RaycastHit[32];
 
-        // While holding firewood, highlight the log or bundle under the crosshair.
-        // Otherwise aim through other wood so the held piece can be set down.
+        // While holding firewood or a candle, highlight the matching piece or bundle under
+        // the crosshair. Otherwise aim through other pieces so the held one can be set down.
         private static void Postfix(
             GoPointer __instance,
             PickupableItem ___heldItem,
@@ -22,7 +22,7 @@ namespace Dizzy.FirewoodBundle
             ref GoPointerButton ___pointedAtButton,
             ref float ___currentLookDistance)
         {
-            if (!FirewoodBundleConfig.IsEnabled && !FirewoodBundleConfig.HooksAreEnabled)
+            if (!BundleKind.AnyEnabled && !FirewoodBundleConfig.HooksAreEnabled)
                 return;
             if (!VanillaLooks(__instance))
                 return;
@@ -34,7 +34,7 @@ namespace Dizzy.FirewoodBundle
                 return;
             }
 
-            if (!FirewoodBundleConfig.IsEnabled || !FirewoodPieces.IsPiece(held))
+            if (!FirewoodPieces.IsActive(held))
             {
                 if (FirewoodBundleConfig.HooksAreEnabled && ___heldItem != null)
                 {
@@ -77,9 +77,12 @@ namespace Dizzy.FirewoodBundle
                 return;
             }
 
-            // A bundle cannot be set onto another object. A single log can, but only
+            // A bundle cannot be set onto another object. A single piece can, but only
             // onto a surface that accepts placed items. Any other highlight blocks the drop.
-            if (!held.big && ___pointedAtButton != null && held.AllowOnItemClick(___pointedAtButton))
+            // A candle bundle still keeps a lantern lit up so it can load one candle.
+            if (___pointedAtButton != null
+                && held.AllowOnItemClick(___pointedAtButton)
+                && (!held.big || IsCandleLantern(held, ___pointedAtButton)))
                 return;
 
             if (___pointedAtButton != null)
@@ -100,6 +103,14 @@ namespace Dizzy.FirewoodBundle
 
             ___pointedAtButton = null;
             ___currentLookDistance = 0f;
+        }
+
+        private static bool IsCandleLantern(ShipItem held, GoPointerButton button)
+        {
+            if (FirewoodPieces.KindOf(held) != BundleKind.Candle)
+                return false;
+            ShipItemLight lantern = button.GetComponent<ShipItemLight>();
+            return lantern != null && !lantern.usesOil;
         }
 
         // Vanilla does not aim in cursor menus, asleep, in bed or from the boat camera.
@@ -440,7 +451,7 @@ namespace Dizzy.FirewoodBundle
         {
             if (___item == null || ___item.held == null)
                 return;
-            bool wood = FirewoodBundleConfig.IsEnabled && FirewoodPieces.IsPiece(___item);
+            bool wood = FirewoodPieces.IsActive(___item);
             bool hooks = FirewoodBundleConfig.HooksAreEnabled && HookLinePieces.IsHook(___item);
             if (!wood && !hooks)
                 return;
@@ -508,7 +519,7 @@ namespace Dizzy.FirewoodBundle
     {
         private static bool Prefix(ShipItem __instance)
         {
-            if (FirewoodBundleConfig.IsEnabled)
+            if (BundleKind.AnyEnabled)
             {
                 if (FirewoodPieces.TryGlue(__instance))
                     return false;
@@ -693,7 +704,7 @@ namespace Dizzy.FirewoodBundle
                 return true;
 
             ShipItem held = FirewoodPieces.AsShip(heldItem);
-            if (FirewoodPieces.CountOf(held) <= 1)
+            if (!FirewoodPieces.IsFirewood(held) || FirewoodPieces.CountOf(held) <= 1)
                 return true;
 
             FirewoodPieces.TryFeedOneLog(held, ___fuelTrigger);
@@ -715,10 +726,25 @@ namespace Dizzy.FirewoodBundle
         }
     }
 
+    [HarmonyPatch(typeof(ShipItemLight), nameof(ShipItemLight.OnItemClick))]
+    internal static class CandleLanternPatch
+    {
+        // Vanilla loads a candle by destroying the held item, which would use up the whole bundle.
+        // A bundle gives the lantern one candle instead. A single candle still uses the vanilla load.
+        private static bool Prefix(ShipItemLight __instance, PickupableItem heldItem, ref bool __result)
+        {
+            ShipItem held = FirewoodPieces.AsShip(heldItem);
+            if (!FirewoodPieces.TryLightLantern(held, __instance))
+                return true;
+            __result = false;
+            return false;
+        }
+    }
+
     [HarmonyPatch(typeof(ShipItem), nameof(ShipItem.OnItemClick))]
     internal static class FirewoodPlacePatch
     {
-        // Left click while aiming at another log drops the held piece.
+        // Left click while aiming at a matching piece drops the held one.
         // Returning true here would drop it with no collision check.
         private static bool Prefix(ShipItem __instance, PickupableItem heldItem, ref bool __result)
         {
@@ -729,10 +755,8 @@ namespace Dizzy.FirewoodBundle
                 return false;
             }
 
-            if (!FirewoodBundleConfig.IsEnabled)
-                return true;
-
-            if (!FirewoodPieces.IsPiece(held) || !FirewoodPieces.IsPiece(__instance))
+            BundleKind kind = FirewoodPieces.KindOf(held);
+            if (kind == null || !kind.IsEnabled || FirewoodPieces.KindOf(__instance) != kind)
                 return true;
 
             __result = false;
@@ -771,7 +795,7 @@ namespace Dizzy.FirewoodBundle
             int count = FirewoodPieces.CountOf(__instance);
             if (count > 1)
             {
-                __instance.lookText = FirewoodPieces.LookText(count);
+                __instance.lookText = FirewoodPieces.LookText(__instance, count);
                 ShipItem prefab = FirewoodPieces.PrefabOf(__instance);
                 if (prefab != null)
                     __instance.description = prefab.description;
@@ -801,11 +825,11 @@ namespace Dizzy.FirewoodBundle
         {
             ShipItem item = FirewoodPieces.AsShip(button);
             if (item == null)
-                item = HookLinePieces.HookOnSlot(button);
+                item = CrateSlots.ItemOnSlot(button);
             int count = FirewoodPieces.CountOf(item);
             if (count > 1)
             {
-                item.lookText = FirewoodPieces.LookText(count);
+                item.lookText = FirewoodPieces.LookText(item, count);
                 ShipItem prefab = FirewoodPieces.PrefabOf(item);
                 if (prefab != null)
                     item.description = prefab.description;
@@ -830,7 +854,7 @@ namespace Dizzy.FirewoodBundle
                     if (___hintText != null)
                         ___hintText.text = "";
                 }
-                OfferCrateGather(___controlsText, item);
+                OfferCrateGather(___controlsText, item, held);
                 return;
             }
             if (FirewoodBundleConfig.HooksAreEnabled && HookLinePieces.IsHook(item))
@@ -870,7 +894,7 @@ namespace Dizzy.FirewoodBundle
                         ___textRIcon.gameObject.SetActive(false);
                     if (___mouseRIcon != null)
                         ___mouseRIcon.enabled = false;
-                    OfferCrateGather(___controlsText, item);
+                    OfferCrateGather(___controlsText, item, held);
                     return;
                 }
 
@@ -890,9 +914,9 @@ namespace Dizzy.FirewoodBundle
                 }
             }
 
-            if (!FirewoodBundleConfig.IsEnabled)
+            if (!BundleKind.AnyEnabled)
             {
-                OfferCrateGather(___controlsText, item);
+                OfferCrateGather(___controlsText, item, held);
                 return;
             }
             if (FirewoodPieces.CanTarget(held, item))
@@ -903,7 +927,7 @@ namespace Dizzy.FirewoodBundle
                 if (!FirewoodPieces.Fits(held, combined))
                     action = "\nR Bundle Full";
                 else if (heldCount > 1 && count <= 1)
-                    action = "\nR Gather Log";
+                    action = "\nR Add " + FirewoodPieces.KindOf(held).Single;
                 else if (count > 1)
                     action = "\nR Add to Bundle";
                 ___controlsText.text = action;
@@ -915,13 +939,15 @@ namespace Dizzy.FirewoodBundle
                     ___textRIcon.gameObject.SetActive(false);
                 if (___mouseRIcon != null)
                     ___mouseRIcon.enabled = false;
-                OfferCrateGather(___controlsText, item);
+                OfferCrateGather(___controlsText, item, held);
                 return;
             }
 
             if (count > 1 && held == null)
             {
-                ___controlsText.text = item.nailed ? "\ntake" : "pick up\ntake";
+                string remove = "Remove " + FirewoodPieces.KindOf(item).Single;
+                ___controlsText.text = item.nailed ? "\n" + remove : "pick up\n" + remove;
+                AddPrompt(___controlsText, FirewoodPieces.ColorPrompt(item));
                 if (item.nailed)
                 {
                     if (___textLicon != null)
@@ -933,7 +959,7 @@ namespace Dizzy.FirewoodBundle
                     ___textRIcon.gameObject.SetActive(true);
             }
 
-            OfferCrateGather(___controlsText, item);
+            OfferCrateGather(___controlsText, item, held);
         }
 
         private static bool OfferRodBait(
@@ -959,15 +985,41 @@ namespace Dizzy.FirewoodBundle
             return true;
         }
 
-        private static void OfferCrateGather(TextMesh controls, ShipItem item)
+        private static void OfferCrateGather(TextMesh controls, ShipItem item, ShipItem held)
         {
-            if (controls == null || !FirewoodBundleConfig.HooksAreEnabled)
+            if (controls == null)
                 return;
-            if (!HookLinePieces.CanGather(item))
+            if (FirewoodBundleConfig.HooksAreEnabled && HookLinePieces.CanGather(item))
+                AddPrompt(controls, "G Bundle Hooks");
+            // The bundle goes to hand, so the hand has to be empty.
+            if (held == null && FirewoodPieces.CanGatherPiece(item))
+                AddPrompt(controls, FirewoodPieces.KindOf(item).GatherPrompt);
+        }
+
+        // The first two lines sit beside the left- and right-click icons. An extra line
+        // must not move them, so pad the side the text grows from to match its anchor.
+        private static void AddPrompt(TextMesh controls, string prompt)
+        {
+            string text = controls.text ?? "";
+            if (text.IndexOf(prompt, System.StringComparison.Ordinal) >= 0)
                 return;
-            if (controls.text != null && controls.text.IndexOf("G Bundle Hooks", System.StringComparison.Ordinal) >= 0)
-                return;
-            controls.text = (controls.text ?? "") + "\nG Bundle Hooks";
+
+            switch (controls.anchor)
+            {
+                case TextAnchor.LowerLeft:
+                case TextAnchor.LowerCenter:
+                case TextAnchor.LowerRight:
+                    controls.text = prompt + "\n" + text;
+                    break;
+                case TextAnchor.MiddleLeft:
+                case TextAnchor.MiddleCenter:
+                case TextAnchor.MiddleRight:
+                    controls.text = "\n" + text + "\n" + prompt;
+                    break;
+                default:
+                    controls.text = text + "\n" + prompt;
+                    break;
+            }
         }
     }
 
@@ -986,7 +1038,7 @@ namespace Dizzy.FirewoodBundle
             }
             catch (System.Exception ex)
             {
-                Plugin.Log.LogError("Could not rebuild a loaded firewood bundle: " + ex.Message);
+                Plugin.Log.LogError("Could not rebuild a loaded bundle: " + ex);
             }
         }
     }
