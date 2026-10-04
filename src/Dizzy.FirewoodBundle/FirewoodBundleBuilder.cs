@@ -211,10 +211,11 @@ namespace Dizzy.FirewoodBundle
                 SausageStacks.WidthOf(item));
         }
 
-        // A pile grows toward a pyramid in shells. Shell S adds one sausage to the outer
-        // edge of every layer, alternating sides, and starts a new layer on top, so S
-        // shells make a pyramid S wide and S high. Each shell fills from the bottom up,
-        // so a new sausage always has one under it. Layers cross at roughly right angles
+        // A pile grows toward a pyramid in shells. After S shells, layer L holds
+        // ceil(S - L / steepness) sausages: steepness 1 makes a pyramid S wide and S high,
+        // 0.5 one about half as high, 2 one about twice as high. Each shell adds one
+        // sausage to the outer edge of every layer still wide enough, alternating sides,
+        // and fills from the bottom up, so a new sausage always has one under it. Layers cross at roughly right angles
         // with some play. A sausage's place depends only on its index and the stack's
         // saved id, so adding one never moves the rest, and a reloaded pile looks the same.
         private static List<Vector3> PileCenters(
@@ -237,20 +238,20 @@ namespace Dizzy.FirewoodBundle
             SaveablePrefab save = item.GetComponent<SaveablePrefab>();
             int seed = save != null ? save.instanceId : 0;
 
+            float steepness = FirewoodBundleConfig.PileSteepness;
             var centers = new List<Vector3>(count);
             turns = new List<Quaternion>(count);
             int shell = 1;
-            int shellStart = 0;
+            int layer = 0;
             for (int i = 0; i < count; i++)
             {
-                if (i - shellStart >= shell)
+                if (PileLayerWidth(layer, shell, steepness) < 1)
                 {
-                    shellStart += shell;
                     shell++;
+                    layer = 0;
                 }
 
-                int layer = i - shellStart;
-                int slot = shell - 1 - layer;
+                int slot = PileLayerWidth(layer, shell, steepness) - 1;
                 // Slots fan out from the middle: 0, then +1, -1, +2, -2...
                 int place = slot == 0 ? 0 : ((slot + 1) / 2) * (slot % 2 == 1 ? 1 : -1);
                 float layerAngle = (layer % 2) * 90f + (PileHash(seed, layer, 1) - 0.5f) * 50f;
@@ -261,9 +262,16 @@ namespace Dizzy.FirewoodBundle
                 float height = layer * size[upAxis] * spacing;
                 centers.Add(layerTurn * (across * side) + turn * (along * slide) + up * height);
                 turns.Add(turn);
+                layer++;
             }
 
             return centers;
+        }
+
+        // How many sausages layer L holds once the pile has this many shells.
+        private static int PileLayerWidth(int layer, int shell, float steepness)
+        {
+            return Mathf.CeilToInt(shell - layer / steepness - 0.0001f);
         }
 
         private static float PileHash(int seed, int index, int salt)

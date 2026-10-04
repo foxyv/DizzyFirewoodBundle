@@ -44,6 +44,7 @@ namespace Dizzy.FirewoodBundle
                 + ", Sausages=" + FirewoodBundleConfig.SausagesEnabled.Value
                 + ", MaxSausages=" + FirewoodBundleConfig.MaxSausages.Value
                 + ", Sausage Spacing=" + FirewoodBundleConfig.SausageSpacingAmount.Value
+                + ", Pile Steepness=" + FirewoodBundleConfig.PileSteepnessAmount.Value
                 + ", Hooks=" + FirewoodBundleConfig.HooksEnabled.Value
                 + ", MaxHooks=" + FirewoodBundleConfig.MaxHooks.Value
                 + ", Hook Messiness=" + FirewoodBundleConfig.HookMessiness.Value

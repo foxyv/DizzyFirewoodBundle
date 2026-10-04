@@ -1,4 +1,5 @@
 using HarmonyLib;
+using UnityEngine;
 
 namespace Dizzy.FirewoodBundle
 {
@@ -41,12 +42,36 @@ namespace Dizzy.FirewoodBundle
         }
     }
 
+    // Holding right-click raises food to the mouth, and the mouth eats it. A stack never
+    // rises. This runs every frame the button is down, including right after a click
+    // that stacked a sausage, so it stays quiet; the press itself says why.
     [HarmonyPatch(typeof(ShipItemFood), nameof(ShipItemFood.OnAltHeld))]
     internal static class SausageEatHoldPatch
     {
         private static bool Prefix(ShipItemFood __instance)
         {
-            return SausageGuard.Allow(__instance);
+            return !SausageStacks.IsStack(__instance);
+        }
+    }
+
+    // A held food item offers "eat" on right-click. A stack cannot be eaten, so it shows
+    // its width key instead.
+    [HarmonyPatch(typeof(LookUI), nameof(LookUI.ShowHoldText))]
+    internal static class SausageHoldTextPatch
+    {
+        private static void Postfix(
+            PickupableItem item,
+            TextMesh ___controlsText,
+            Renderer ___mouseRIcon,
+            TextMesh ___textRIcon)
+        {
+            if (!SausageStacks.IsStack(item) || ___controlsText == null)
+                return;
+            ___controlsText.text = SausageStacks.WidthPrompt(FirewoodPieces.AsShip(item));
+            if (___mouseRIcon != null)
+                ___mouseRIcon.enabled = false;
+            if (___textRIcon != null)
+                ___textRIcon.gameObject.SetActive(false);
         }
     }
 

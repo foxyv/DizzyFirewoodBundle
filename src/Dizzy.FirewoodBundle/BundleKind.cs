@@ -116,7 +116,7 @@ namespace Dizzy.FirewoodBundle
             }
         }
 
-        // The count shares the saved amount with the tie color, so it has to stay under the stride.
+        // The count is saved next to the tie color or stack width, 1000 apart, so it stays under 1000.
         internal int Limit
         {
             get
@@ -124,7 +124,7 @@ namespace Dizzy.FirewoodBundle
                 int limit = this == Firewood
                     ? FirewoodBundleConfig.PieceLimit
                     : this == Candle ? FirewoodBundleConfig.CandleLimit : FirewoodBundleConfig.SausageLimit;
-                return Mathf.Clamp(limit, 2, FirewoodPieces.ColorStride);
+                return Mathf.Clamp(limit, 2, FirewoodPieces.MaxCount);
             }
         }
 

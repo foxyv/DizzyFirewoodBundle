@@ -52,6 +52,8 @@ namespace Dizzy.FirewoodBundle
         // A bundle saves its count and tie color in the item's amount, which the game
         // already saves: amount = single + (count - 1) + color * ColorStride.
         internal const int ColorStride = 1000;
+        // Both saved encodings keep the count below 1000, so no bundle may reach it.
+        internal const int MaxCount = ColorStride - 1;
 
         internal static int CountOf(ShipItem item)
         {
@@ -305,10 +307,15 @@ namespace Dizzy.FirewoodBundle
             }
 
             int count = CountOf(held) + CountOf(target);
-            if (count < 2 || !Fits(target, count))
+            if (count < 2)
+                return false;
+            if (!Fits(target, count))
             {
-                if (count >= 2)
-                    Plugin.Log.LogInfo("A " + KindOf(target).BundleName + " already holds " + KindOf(target).Limit + " " + KindOf(target).Plural + ".");
+                // A held bundle tops up a pile that has room and keeps the rest.
+                int room = RoomIn(held, target);
+                if (room > 0)
+                    return FillPile(held, target, room);
+                Plugin.Log.LogInfo("A " + KindOf(target).BundleName + " already holds " + KindOf(target).Limit + " " + KindOf(target).Plural + ".");
                 return false;
             }
 
@@ -396,6 +403,55 @@ namespace Dizzy.FirewoodBundle
             }
 
             Plugin.Log.LogInfo("Added to the " + KindOf(pile).BundleName + ". It now holds " + count + ".");
+            return true;
+        }
+
+        // How many pieces a held bundle can move onto a pile that cannot take all of it.
+        // 0 when the pile is full, is a single piece, or the held bundle would fit whole.
+        internal static int RoomIn(ShipItem held, ShipItem pile)
+        {
+            BundleKind kind = KindOf(pile);
+            int heldCount = CountOf(held);
+            int pileCount = CountOf(pile);
+            if (kind == null || heldCount <= 1 || (pileCount <= 1 && !pile.nailed))
+                return 0;
+            if (heldCount + pileCount <= kind.Limit)
+                return 0;
+            return Mathf.Max(0, kind.Limit - pileCount);
+        }
+
+        // Moves pieces from the held bundle onto the pile until the pile is full.
+        private static bool FillPile(ShipItem held, ShipItem pile, int move)
+        {
+            int heldCount = CountOf(held);
+            int pileCount = CountOf(pile);
+            int pileTotal = pileCount + move;
+            int heldLeft = heldCount - move;
+            SausageStacks.MergeFood(pile, held, pileCount, move);
+            WriteCount(pile, pileTotal);
+            try
+            {
+                FirewoodBundleBuilder.Apply(pile);
+                if (heldLeft <= 1)
+                {
+                    WriteCount(held, 1);
+                    FirewoodBundleBuilder.RestoreSingle(held);
+                }
+                else
+                {
+                    WriteCount(held, heldLeft);
+                    FirewoodBundleBuilder.Apply(held);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                WriteCount(pile, pileCount);
+                WriteCount(held, heldCount);
+                Plugin.Log.LogError("Could not fill the " + KindOf(pile).BundleName + ": " + ex);
+                return false;
+            }
+
+            Plugin.Log.LogInfo("Moved " + move + " " + KindOf(pile).Plural + " onto the " + KindOf(pile).BundleName + ". It now holds " + pileTotal + ".");
             return true;
         }
 

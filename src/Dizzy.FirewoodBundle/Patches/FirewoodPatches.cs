@@ -525,6 +525,13 @@ namespace Dizzy.FirewoodBundle
                     return false;
                 if (FirewoodPieces.TrySplit(__instance))
                     return false;
+                // A right-click with a stack in hand that did not stack or fill anything
+                // is an attempt to eat it.
+                if (__instance.held != null && SausageStacks.IsStack(__instance))
+                {
+                    SausageStacks.Notify(SausageStacks.TakeOneFirst);
+                    return false;
+                }
             }
 
             if (FirewoodBundleConfig.HooksAreEnabled)
@@ -933,7 +940,9 @@ namespace Dizzy.FirewoodBundle
                 if (refusal != null)
                     action = "\nR " + refusal;
                 else if (!FirewoodPieces.Fits(held, combined))
-                    action = "\nR " + kind.Group + " Full";
+                    action = FirewoodPieces.RoomIn(held, item) > 0
+                        ? "\nR Fill " + kind.Group
+                        : "\nR " + kind.Group + " Full";
                 else if (heldCount > 1 && count <= 1)
                     action = "\nR Add " + kind.Single;
                 else if (count > 1)
