@@ -13,6 +13,8 @@ namespace Dizzy.FirewoodBundle
         private const string KnotName = "FirewoodBundleKnot";
         private const string BoxMeshName = "FirewoodBundleBox";
         private const float RibbonThickness = 0.0016f;
+        // Local Y. If a placed sausage tower lies on its side, this is the axis to change.
+        private const int StackUpAxis = 1;
 
         private static readonly Dictionary<int, int> Stamps = new Dictionary<int, int>();
         private static readonly Dictionary<int, int> HullStamps = new Dictionary<int, int>();
@@ -149,7 +151,14 @@ namespace Dizzy.FirewoodBundle
 
             BundleKind kind = FirewoodPieces.KindOf(item);
             float pitch = cross * (kind != null ? kind.Pitch : 0.97f);
-            List<Vector3> centers = FirewoodPieces.Centers(count, pitch, longAxis);
+            List<Quaternion> turns = null;
+            List<Vector3> centers;
+            if (kind == BundleKind.Sausage && mesh != null && SausageStacks.WidthOf(item) == SausageStacks.PileWidth)
+                centers = PileCenters(item, count, mesh, longAxis, FirewoodBundleConfig.SausageSpacing, out turns);
+            else if (kind == BundleKind.Sausage && mesh != null)
+                centers = StackCenters(item, count, mesh, longAxis, FirewoodBundleConfig.SausageSpacing);
+            else
+                centers = FirewoodPieces.Centers(count, pitch, longAxis);
             ClearSticks(item);
             if (mesh != null && source != null)
             {
@@ -157,13 +166,16 @@ namespace Dizzy.FirewoodBundle
                 Material[] materials = source.sharedMaterials;
                 var renderers = new List<Renderer>();
                 for (int i = 0; i < centers.Count; i++)
-                    renderers.Add(CreateStick(item, mesh, materials, centers[i], source));
-                Renderer tie = CreateString(item, centers, mesh, longAxis, cross, source);
-                if (tie != null)
-                    renderers.Add(tie);
-                Renderer knot = CreateKnot(item, centers, mesh, longAxis, cross);
-                if (knot != null)
-                    renderers.Add(knot);
+                    renderers.Add(CreateStick(item, mesh, materials, centers[i], turns != null ? turns[i] : Quaternion.identity, source));
+                if (kind == null || kind.Tie != TieStyle.None)
+                {
+                    Renderer tie = CreateString(item, centers, mesh, longAxis, cross, source);
+                    if (tie != null)
+                        renderers.Add(tie);
+                    Renderer knot = CreateKnot(item, centers, mesh, longAxis, cross);
+                    if (knot != null)
+                        renderers.Add(knot);
+                }
                 IncludeInLod(item, renderers);
             }
 
@@ -177,10 +189,93 @@ namespace Dizzy.FirewoodBundle
                 AdoptTwoHandedHold(item);
             ApplyMass(item, count);
             ApplyHoldDistance(item, centers, longAxis, cross);
-            FitColliders(item, centers, mesh);
+            FitColliders(item, centers, mesh, turns);
             // Growing the physics shape while the hull is heeled over shoves the boat.
             // Ignore the hull capsule until the bundle is clear of it.
             QuietHull(item);
+        }
+
+        // A sausage stack is a tower: rows stack along the sausage's local up, and each
+        // axis is spaced by the sausage's own size there, so they sit on each other.
+        private static List<Vector3> StackCenters(ShipItem item, int count, Mesh mesh, int longAxis, float pitch)
+        {
+            int upAxis = longAxis == StackUpAxis ? (StackUpAxis + 1) % 3 : StackUpAxis;
+            int columnAxis = 3 - longAxis - upAxis;
+            Vector3 size = mesh.bounds.size;
+            return FirewoodPieces.Centers(
+                count,
+                size[columnAxis] * pitch,
+                size[upAxis] * pitch,
+                columnAxis,
+                upAxis,
+                SausageStacks.WidthOf(item));
+        }
+
+        // A pile grows toward a pyramid in shells. Shell S adds one sausage to the outer
+        // edge of every layer, alternating sides, and starts a new layer on top, so S
+        // shells make a pyramid S wide and S high. Each shell fills from the bottom up,
+        // so a new sausage always has one under it. Layers cross at roughly right angles
+        // with some play. A sausage's place depends only on its index and the stack's
+        // saved id, so adding one never moves the rest, and a reloaded pile looks the same.
+        private static List<Vector3> PileCenters(
+            ShipItem item,
+            int count,
+            Mesh mesh,
+            int longAxis,
+            float spacing,
+            out List<Quaternion> turns)
+        {
+            int upAxis = longAxis == StackUpAxis ? (StackUpAxis + 1) % 3 : StackUpAxis;
+            int columnAxis = 3 - longAxis - upAxis;
+            Vector3 size = mesh.bounds.size;
+            Vector3 up = Vector3.zero;
+            up[upAxis] = 1f;
+            Vector3 along = Vector3.zero;
+            along[longAxis] = 1f;
+            Vector3 across = Vector3.zero;
+            across[columnAxis] = 1f;
+            SaveablePrefab save = item.GetComponent<SaveablePrefab>();
+            int seed = save != null ? save.instanceId : 0;
+
+            var centers = new List<Vector3>(count);
+            turns = new List<Quaternion>(count);
+            int shell = 1;
+            int shellStart = 0;
+            for (int i = 0; i < count; i++)
+            {
+                if (i - shellStart >= shell)
+                {
+                    shellStart += shell;
+                    shell++;
+                }
+
+                int layer = i - shellStart;
+                int slot = shell - 1 - layer;
+                // Slots fan out from the middle: 0, then +1, -1, +2, -2...
+                int place = slot == 0 ? 0 : ((slot + 1) / 2) * (slot % 2 == 1 ? 1 : -1);
+                float layerAngle = (layer % 2) * 90f + (PileHash(seed, layer, 1) - 0.5f) * 50f;
+                Quaternion layerTurn = Quaternion.AngleAxis(layerAngle, up);
+                Quaternion turn = layerTurn * Quaternion.AngleAxis((PileHash(seed, i, 2) - 0.5f) * 20f, up);
+                float side = place * size[columnAxis] * spacing;
+                float slide = (PileHash(seed, i, 3) - 0.5f) * size[longAxis] * 0.25f;
+                float height = layer * size[upAxis] * spacing;
+                centers.Add(layerTurn * (across * side) + turn * (along * slide) + up * height);
+                turns.Add(turn);
+            }
+
+            return centers;
+        }
+
+        private static float PileHash(int seed, int index, int salt)
+        {
+            unchecked
+            {
+                uint h = (uint)(seed * 73856093) ^ (uint)(index * 19349663) ^ (uint)(salt * 83492791);
+                h ^= h >> 13;
+                h *= 0x5bd1e995;
+                h ^= h >> 15;
+                return (h & 0xFFFFFF) / 16777215f;
+            }
         }
 
         private static void AdoptTwoHandedHold(ShipItem item)
@@ -226,13 +321,14 @@ namespace Dizzy.FirewoodBundle
             Mesh mesh,
             Material[] materials,
             Vector3 localPosition,
+            Quaternion localRotation,
             MeshRenderer source)
         {
             var stick = new GameObject(StickName);
             stick.layer = item.gameObject.layer;
             stick.transform.SetParent(item.transform, false);
             stick.transform.localPosition = localPosition;
-            stick.transform.localRotation = Quaternion.identity;
+            stick.transform.localRotation = localRotation;
             stick.transform.localScale = Vector3.one;
 
             MeshFilter filter = stick.AddComponent<MeshFilter>();
@@ -1181,9 +1277,9 @@ namespace Dizzy.FirewoodBundle
             return false;
         }
 
-        private static void FitColliders(ShipItem item, List<Vector3> centers, Mesh mesh)
+        private static void FitColliders(ShipItem item, List<Vector3> centers, Mesh mesh, List<Quaternion> turns)
         {
-            Bounds bundle = BundleBounds(centers, mesh);
+            Bounds bundle = BundleBounds(centers, mesh, turns);
             bundle.Expand(0.04f);
             bool twinNeedsBox = item.itemRigidbodyC != null && HasMeshCollider(item.itemRigidbodyC.gameObject);
             Mesh box = null;
@@ -1195,12 +1291,31 @@ namespace Dizzy.FirewoodBundle
                 FitOn(item.itemRigidbodyC.gameObject, bundle, box);
         }
 
-        private static Bounds BundleBounds(List<Vector3> centers, Mesh mesh)
+        private static Bounds BundleBounds(List<Vector3> centers, Mesh mesh, List<Quaternion> turns = null)
         {
             Bounds stick = mesh != null ? mesh.bounds : new Bounds(Vector3.zero, new Vector3(0.08f, 0.08f, 0.4f));
             Bounds bundle = new Bounds(centers[0] + stick.center, stick.size);
-            for (int i = 1; i < centers.Count; i++)
-                bundle.Encapsulate(new Bounds(centers[i] + stick.center, stick.size));
+            for (int i = 0; i < centers.Count; i++)
+            {
+                if (turns == null)
+                {
+                    bundle.Encapsulate(new Bounds(centers[i] + stick.center, stick.size));
+                    continue;
+                }
+
+                // A turned piece reaches out past its unturned box, so take each corner.
+                if (i == 0)
+                    bundle = new Bounds(centers[0] + turns[0] * stick.center, Vector3.zero);
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    Vector3 point = new Vector3(
+                        (corner & 1) == 0 ? stick.min.x : stick.max.x,
+                        (corner & 2) == 0 ? stick.min.y : stick.max.y,
+                        (corner & 4) == 0 ? stick.min.z : stick.max.z);
+                    bundle.Encapsulate(centers[i] + turns[i] * point);
+                }
+            }
+
             return bundle;
         }
 

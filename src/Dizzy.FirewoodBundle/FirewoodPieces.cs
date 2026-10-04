@@ -16,7 +16,7 @@ namespace Dizzy.FirewoodBundle
 
         private static float _pickedUpAt = -10f;
 
-        // Firewood or a candle: anything that ties into a two-handed bundle.
+        // Firewood, a candle or a sausage: anything that makes a two-handed bundle.
         internal static bool IsPiece(Component component)
         {
             return KindOf(component) != null;
@@ -55,8 +55,11 @@ namespace Dizzy.FirewoodBundle
 
         internal static int CountOf(ShipItem item)
         {
-            if (!IsPiece(item))
+            BundleKind kind = KindOf(item);
+            if (kind == null)
                 return 0;
+            if (!kind.CountInAmount)
+                return SausageStacks.CountOf(item);
             int extra = Mathf.RoundToInt(item.amount) - SingleAmount(item);
             if (extra <= 0)
                 return 1;
@@ -66,7 +69,7 @@ namespace Dizzy.FirewoodBundle
         internal static int ColorOf(ShipItem item)
         {
             BundleKind kind = KindOf(item);
-            if (kind == null)
+            if (kind == null || kind.ColorCount == 0)
                 return 0;
             int extra = Mathf.RoundToInt(item.amount) - SingleAmount(item);
             if (extra <= 0)
@@ -83,6 +86,13 @@ namespace Dizzy.FirewoodBundle
 
         private static void WriteCount(ShipItem item, int count, int color)
         {
+            BundleKind kind = KindOf(item);
+            if (kind != null && !kind.CountInAmount)
+            {
+                SausageStacks.WriteCount(item, count);
+                return;
+            }
+
             int single = SingleAmount(item);
             item.amount = count <= 1 ? single : single + (count - 1) + color * ColorStride;
         }
@@ -106,7 +116,7 @@ namespace Dizzy.FirewoodBundle
                 ShipItem bundle = AsShip(pointer.GetHeldItem());
                 if (bundle == null)
                     bundle = pointer.GetPointedAtItem();
-                if (!IsActive(bundle) || CountOf(bundle) <= 1)
+                if (!IsActive(bundle) || CountOf(bundle) <= 1 || KindOf(bundle).ColorCount == 0)
                     continue;
 
                 BundleKind kind = KindOf(bundle);
@@ -123,12 +133,16 @@ namespace Dizzy.FirewoodBundle
             BundleKind kind = KindOf(bundle);
             if (kind == null)
                 return "";
+            if (kind.ColorCount == 0)
+                return kind == BundleKind.Sausage ? SausageStacks.WidthPrompt(bundle) : "";
             return FirewoodBundleConfig.ColorKeyLabel + " " + kind.TieName + ": " + kind.ColorNames[ColorOf(bundle)];
         }
 
         internal static string LookText(ShipItem item, int count)
         {
             BundleKind kind = KindOf(item);
+            if (kind == BundleKind.Sausage)
+                return SausageStacks.Label(item, count);
             return kind != null ? kind.LookText(count) : "";
         }
 
@@ -137,7 +151,21 @@ namespace Dizzy.FirewoodBundle
             _pickedUpAt = Time.time;
         }
 
+        // A matching piece that can be bundled with the held one.
         internal static bool CanTarget(ShipItem held, ShipItem target)
+        {
+            return CanTargetKind(held, target) && SausageStacks.Rejection(held, target) == null;
+        }
+
+        // Why the held piece cannot join this matching piece, or null.
+        internal static string Refusal(ShipItem held, ShipItem target)
+        {
+            return CanTargetKind(held, target) ? SausageStacks.Rejection(held, target) : null;
+        }
+
+        // Same kind, both sold, and the target is out in the world. A sausage can still
+        // be refused for its state, so it highlights and says why.
+        internal static bool CanTargetKind(ShipItem held, ShipItem target)
         {
             BundleKind kind = KindOf(held);
             if (kind == null || !kind.IsEnabled || KindOf(target) != kind || held == target)
@@ -217,7 +245,7 @@ namespace Dizzy.FirewoodBundle
                 ShipItem ship = Resolve(Hits[i].collider);
                 if (ship == held)
                     continue;
-                if (CanTarget(held, ship))
+                if (CanTargetKind(held, ship))
                 {
                     if (hitDistance < woodDistance)
                     {
@@ -265,8 +293,16 @@ namespace Dizzy.FirewoodBundle
                 new Ray(pointer.transform.position, pointer.transform.forward));
             float distance;
             ShipItem target = PieceInFront(held, ray, out distance);
-            if (!CanTarget(held, target))
+            if (!CanTargetKind(held, target))
                 return false;
+
+            // The click is used up by the refusal, so it does not fall through to eating.
+            string refusal = SausageStacks.Rejection(held, target);
+            if (refusal != null)
+            {
+                SausageStacks.Notify(refusal);
+                return true;
+            }
 
             int count = CountOf(held) + CountOf(target);
             if (count < 2 || !Fits(target, count))
@@ -279,7 +315,8 @@ namespace Dizzy.FirewoodBundle
             if (CountOf(target) > 1 || target.nailed)
                 return AddHeldToPile(held, target, pointer, count);
 
-            float previousAmount = held.amount;
+            int previousCount = CountOf(held);
+            SausageStacks.MergeFood(held, target, previousCount, CountOf(target));
             WriteCount(held, count);
             try
             {
@@ -289,7 +326,7 @@ namespace Dizzy.FirewoodBundle
             }
             catch (System.Exception ex)
             {
-                held.amount = previousAmount;
+                WriteCount(held, previousCount);
                 Plugin.Log.LogError("Could not tie a " + KindOf(held).BundleName + ": " + ex);
                 return false;
             }
@@ -341,7 +378,8 @@ namespace Dizzy.FirewoodBundle
         // The pile stays where it is. The wood in hand is what gets used up.
         private static bool AddHeldToPile(ShipItem held, ShipItem pile, GoPointer pointer, int count)
         {
-            float previousAmount = pile.amount;
+            int previousCount = CountOf(pile);
+            SausageStacks.MergeFood(pile, held, previousCount, CountOf(held));
             WriteCount(pile, count);
             try
             {
@@ -352,7 +390,7 @@ namespace Dizzy.FirewoodBundle
             }
             catch (System.Exception ex)
             {
-                pile.amount = previousAmount;
+                WriteCount(pile, previousCount);
                 Plugin.Log.LogError("Could not add to the " + KindOf(pile).BundleName + ": " + ex);
                 return false;
             }
@@ -512,7 +550,10 @@ namespace Dizzy.FirewoodBundle
             GameObject spawned = Object.Instantiate(prefab.gameObject, position, rotation);
             ShipItem log = spawned.GetComponent<ShipItem>();
             if (log != null)
+            {
                 log.sold = true;
+                SausageStacks.CopyFood(bundle, log);
+            }
             return log;
         }
 
@@ -542,7 +583,7 @@ namespace Dizzy.FirewoodBundle
                 PickupableItem held = pointer.GetHeldItem();
                 ShipItem heldShip = AsShip(held);
                 ShipItem target = pointer.GetPointedAtItem();
-                if (!CanTarget(heldShip, target))
+                if (!CanTargetKind(heldShip, target))
                     continue;
 
                 if (!toss
@@ -612,6 +653,8 @@ namespace Dizzy.FirewoodBundle
         {
             if (!IsActive(piece) || CountOf(piece) > 1)
                 return false;
+            if (KindOf(piece) == BundleKind.Sausage && (!SausageStacks.IsPreserved(piece) || !SausageStacks.IsWhole(piece)))
+                return false;
             CrateInventory inventory = CrateSlots.OpenCrateHolding(piece);
             return inventory != null && LoosePieces(inventory, KindOf(piece), piece).Count >= 1;
         }
@@ -624,8 +667,11 @@ namespace Dizzy.FirewoodBundle
             for (int i = 0; i < inventory.containedItems.Count; i++)
             {
                 ShipItem item = inventory.containedItems[i];
-                if (item != null && item != except && KindOf(item) == kind && CountOf(item) <= 1)
-                    loose.Add(item);
+                if (item == null || item == except || KindOf(item) != kind || CountOf(item) > 1)
+                    continue;
+                if (SausageStacks.Rejection(except, item) != null)
+                    continue;
+                loose.Add(item);
             }
 
             return loose;
@@ -643,6 +689,7 @@ namespace Dizzy.FirewoodBundle
             for (int extra = 1; extra < size; extra++)
             {
                 ShipItem other = loose[loose.Count - extra];
+                SausageStacks.MergeFood(piece, other, extra, 1);
                 inventory.WithdrawItem(other);
                 CrateSlots.ClearCrateSlot(other);
                 Consume(other);
@@ -667,23 +714,34 @@ namespace Dizzy.FirewoodBundle
 
         internal static List<Vector3> Centers(int count, float pitch, int longAxis)
         {
+            return Centers(count, pitch, pitch, (longAxis + 1) % 3, (longAxis + 2) % 3, 0);
+        }
+
+        // Columns run along columnAxis, rows stack along upAxis. maxColumns 0 keeps the
+        // grid as close to square as the count allows. 1 stacks every piece in one column.
+        internal static List<Vector3> Centers(int count, float columnPitch, float rowPitch, int columnAxis, int upAxis, int maxColumns)
+        {
             var centers = new List<Vector3>(Mathf.Max(count, 0));
             if (count < 1)
                 return centers;
 
             int columns = Mathf.CeilToInt(Mathf.Sqrt(count));
+            if (maxColumns > 0)
+                columns = Mathf.Min(columns, maxColumns);
             int rows = Mathf.CeilToInt(count / (float)columns);
             int placed = 0;
             for (int row = 0; row < rows && placed < count; row++)
             {
                 int inRow = Mathf.Min(columns, count - placed);
-                float rowWidth = (inRow - 1) * pitch;
+                float rowWidth = (inRow - 1) * columnPitch;
                 // The bottom row stays on the nail point. Extra rows stack upward.
-                float y = row * pitch;
+                float y = row * rowPitch;
                 for (int column = 0; column < inRow; column++)
                 {
-                    float x = column * pitch - rowWidth * 0.5f;
-                    centers.Add(OnCrossSection(x, y, longAxis));
+                    Vector3 local = Vector3.zero;
+                    local[columnAxis] = column * columnPitch - rowWidth * 0.5f;
+                    local[upAxis] = y;
+                    centers.Add(local);
                     placed++;
                 }
             }
@@ -766,16 +824,6 @@ namespace Dizzy.FirewoodBundle
             if (body != null)
                 return body.GetShipItem();
             return collider.GetComponentInParent<ShipItem>();
-        }
-
-        private static Vector3 OnCrossSection(float x, float y, int longAxis)
-        {
-            int a = (longAxis + 1) % 3;
-            int b = (longAxis + 2) % 3;
-            Vector3 local = Vector3.zero;
-            local[a] = x;
-            local[b] = y;
-            return local;
         }
 
     }

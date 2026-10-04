@@ -2,6 +2,13 @@ using UnityEngine;
 
 namespace Dizzy.FirewoodBundle
 {
+    internal enum TieStyle
+    {
+        Cord,
+        Ribbon,
+        None
+    }
+
     // What can be tied into a two-handed bundle. Each kind only bundles with itself.
     internal sealed class BundleKind
     {
@@ -23,54 +30,90 @@ namespace Dizzy.FirewoodBundle
             "firewood bundle",
             "firewood",
             "Log",
+            "Bundle",
             "Cord",
             Prepend("Brown", DyeNames),
             Prepend(new Color(0.55f, 0.38f, 0.2f), Dyes),
-            false,
-            0.97f);
+            TieStyle.Cord,
+            0.97f,
+            true);
 
         internal static readonly BundleKind Candle = new BundleKind(
             "candle bundle",
             "candles",
             "Candle",
+            "Bundle",
             "Ribbon",
             DyeNames,
             Dyes,
-            true,
-            1.02f);
+            TieStyle.Ribbon,
+            1.02f,
+            true);
+
+        // Food already uses amount for how cooked it is, so a stack keeps its count in
+        // a StackState and saves it in the food's spare extra value.
+        internal static readonly BundleKind Sausage = new BundleKind(
+            "sausage stack",
+            "sausages",
+            "Sausage",
+            "Stack",
+            "",
+            new string[0],
+            new Color[0],
+            TieStyle.None,
+            0.85f,
+            false);
 
         internal readonly string BundleName;
         internal readonly string Plural;
         internal readonly string Single;
+        internal readonly string Group;
         internal readonly string TieName;
         internal readonly string[] ColorNames;
         internal readonly Color[] Colors;
-        internal readonly bool Ribbon;
+        internal readonly TieStyle Tie;
         internal readonly float Pitch;
+        internal readonly bool CountInAmount;
 
         private BundleKind(
             string bundleName,
             string plural,
             string single,
+            string group,
             string tieName,
             string[] colorNames,
             Color[] colors,
-            bool ribbon,
-            float pitch)
+            TieStyle tie,
+            float pitch,
+            bool countInAmount)
         {
             BundleName = bundleName;
             Plural = plural;
             Single = single;
+            Group = group;
             TieName = tieName;
             ColorNames = colorNames;
             Colors = colors;
-            Ribbon = ribbon;
+            Tie = tie;
             Pitch = pitch;
+            CountInAmount = countInAmount;
+        }
+
+        internal bool Ribbon
+        {
+            get { return Tie == TieStyle.Ribbon; }
         }
 
         internal bool IsEnabled
         {
-            get { return this == Firewood ? FirewoodBundleConfig.IsEnabled : FirewoodBundleConfig.CandlesAreEnabled; }
+            get
+            {
+                if (this == Firewood)
+                    return FirewoodBundleConfig.IsEnabled;
+                if (this == Candle)
+                    return FirewoodBundleConfig.CandlesAreEnabled;
+                return FirewoodBundleConfig.SausagesAreEnabled;
+            }
         }
 
         // The count shares the saved amount with the tie color, so it has to stay under the stride.
@@ -78,7 +121,9 @@ namespace Dizzy.FirewoodBundle
         {
             get
             {
-                int limit = this == Firewood ? FirewoodBundleConfig.PieceLimit : FirewoodBundleConfig.CandleLimit;
+                int limit = this == Firewood
+                    ? FirewoodBundleConfig.PieceLimit
+                    : this == Candle ? FirewoodBundleConfig.CandleLimit : FirewoodBundleConfig.SausageLimit;
                 return Mathf.Clamp(limit, 2, FirewoodPieces.ColorStride);
             }
         }
@@ -90,7 +135,7 @@ namespace Dizzy.FirewoodBundle
 
         internal string GatherPrompt
         {
-            get { return "G Bundle " + (this == Firewood ? "Firewood" : "Candles"); }
+            get { return "G " + Group + " " + char.ToUpperInvariant(Plural[0]) + Plural.Substring(1); }
         }
 
         internal string LookText(int count)
@@ -108,7 +153,7 @@ namespace Dizzy.FirewoodBundle
 
         internal static bool AnyEnabled
         {
-            get { return Firewood.IsEnabled || Candle.IsEnabled; }
+            get { return Firewood.IsEnabled || Candle.IsEnabled || Sausage.IsEnabled; }
         }
 
         internal static BundleKind Of(ShipItem ship)
@@ -121,6 +166,8 @@ namespace Dizzy.FirewoodBundle
             ShipItemLanternFuel fuel = ship as ShipItemLanternFuel;
             if (fuel != null && !fuel.oilBottle)
                 return Candle;
+            if (ship is ShipItemFood && ship.name == SausageStacks.ItemName)
+                return Sausage;
             return null;
         }
     }

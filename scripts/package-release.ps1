@@ -1,8 +1,8 @@
 # Packages Dizzy Firewood Bundle for GitHub Releases.
-# Usage: .\scripts\package-release.ps1 [-Version 0.4.0]
+# Usage: .\scripts\package-release.ps1 [-Version 0.5.0]
 
 param(
-    [string]$Version = "0.4.0"
+    [string]$Version = "0.5.0"
 )
 
 $ErrorActionPreference = "Stop"
