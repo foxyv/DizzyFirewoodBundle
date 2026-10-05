@@ -10,11 +10,19 @@ namespace Dizzy.FirewoodBundle
         internal static ConfigEntry<KeyCode> ColorKey;
         internal static ConfigEntry<bool> CandlesEnabled;
         internal static ConfigEntry<int> MaxCandles;
+        internal static ConfigEntry<float> CandleSpacingAmount;
         internal static ConfigEntry<bool> SausagesEnabled;
         internal static ConfigEntry<int> MaxSausages;
         internal static ConfigEntry<KeyCode> WidthKey;
         internal static ConfigEntry<float> SausageSpacingAmount;
         internal static ConfigEntry<float> PileSteepnessAmount;
+        internal static ConfigEntry<bool> HangingEnabled;
+        internal static ConfigEntry<int> MaxHanging;
+        internal static ConfigEntry<int> BunchSizeAmount;
+        internal static ConfigEntry<float> BunchRadiusAmount;
+        internal static ConfigEntry<float> BunchDropAmount;
+        internal static ConfigEntry<float> HangStringAmount;
+        internal static ConfigEntry<float> HangFlareAmount;
         internal static ConfigEntry<bool> HooksEnabled;
         internal static ConfigEntry<int> MaxHooks;
         internal static ConfigEntry<float> HookMessiness;
@@ -92,6 +100,46 @@ namespace Dizzy.FirewoodBundle
             get { return MaxCandles != null ? MaxCandles.Value : 24; }
         }
 
+        internal static bool HangingAreEnabled
+        {
+            get { return HangingEnabled == null || HangingEnabled.Value; }
+        }
+
+        internal static int HangingLimit
+        {
+            get { return MaxHanging != null ? MaxHanging.Value : 48; }
+        }
+
+        internal static int BunchSize
+        {
+            get { return BunchSizeAmount != null ? Mathf.Max(2, BunchSizeAmount.Value) : 12; }
+        }
+
+        internal static float BunchRadius
+        {
+            get { return BunchRadiusAmount != null ? BunchRadiusAmount.Value : 0.75f; }
+        }
+
+        internal static float BunchDrop
+        {
+            get { return BunchDropAmount != null ? BunchDropAmount.Value : 2f; }
+        }
+
+        internal static float HangStringLength
+        {
+            get { return HangStringAmount != null ? HangStringAmount.Value : 1f; }
+        }
+
+        internal static float CandleSpacing
+        {
+            get { return CandleSpacingAmount != null ? CandleSpacingAmount.Value : 0.9f; }
+        }
+
+        internal static float HangFlare
+        {
+            get { return HangFlareAmount != null ? HangFlareAmount.Value : 0.75f; }
+        }
+
         internal static bool HooksAreEnabled
         {
             get { return HooksEnabled == null || HooksEnabled.Value; }
@@ -156,6 +204,14 @@ namespace Dizzy.FirewoodBundle
                     "Most candles a bundle can hold, up to 999. They pack in a square grid, as close to square as the count allows.",
                     new AcceptableValueRange<int>(2, FirewoodPieces.MaxCount)));
 
+            CandleSpacingAmount = config.Bind(
+                "Candles",
+                "Spacing",
+                0.9f,
+                new ConfigDescription(
+                    "How far apart candles sit in a bundle, as a share of one candle's thickness. 1 has them just touching. Lower packs them tighter; higher spreads them out. A bundle picks up the change when it is rebuilt: on load, or when a candle is added or taken.",
+                    new AcceptableValueRange<float>(0.5f, 2f)));
+
             SausagesEnabled = config.Bind(
                 "Sausages",
                 "Enabled",
@@ -191,6 +247,60 @@ namespace Dizzy.FirewoodBundle
                 new ConfigDescription(
                     "How steep a sausage Tree or Pile grows. 1 is the usual shape. 0.5 is fairly flat, 2 very steep. A stack picks up the change when it is rebuilt: on load, when a sausage is added or taken, or when its shape changes.",
                     new AcceptableValueRange<float>(0.25f, 3f)));
+
+            HangingEnabled = config.Bind(
+                "Hanging Sausages",
+                "Enabled",
+                true,
+                "Click an empty lamp hook with a smoked or dried sausage to hang it. Right-click the hanging bundle with more sausages of the same kind to add them; they hang in bunches around a central string. Right-click it with empty hands to take one off.");
+
+            MaxHanging = config.Bind(
+                "Hanging Sausages",
+                "MaxSausages",
+                48,
+                new ConfigDescription(
+                    "Most sausages one hook can hold, up to 999.",
+                    new AcceptableValueRange<int>(1, FirewoodPieces.MaxCount)));
+
+            BunchSizeAmount = config.Bind(
+                "Hanging Sausages",
+                "Bunch Size",
+                12,
+                new ConfigDescription(
+                    "How many sausages hang around the string at one height before a new bunch starts lower down.",
+                    new AcceptableValueRange<int>(2, 12)));
+
+            BunchRadiusAmount = config.Bind(
+                "Hanging Sausages",
+                "Bunch Radius",
+                0.75f,
+                new ConfigDescription(
+                    "Multiplier for how far the sausages in a bunch hang out from the central string. 1 just keeps them from touching.",
+                    new AcceptableValueRange<float>(0.5f, 2f)));
+
+            BunchDropAmount = config.Bind(
+                "Hanging Sausages",
+                "Bunch Drop",
+                2f,
+                new ConfigDescription(
+                    "Multiplier for how much lower each new bunch hangs than the one above it.",
+                    new AcceptableValueRange<float>(0.3f, 3f)));
+
+            HangStringAmount = config.Bind(
+                "Hanging Sausages",
+                "String Length",
+                1f,
+                new ConfigDescription(
+                    "Multiplier for the length of the string from each bunch's knot to its sausages. Longer lets them hang lower under the knot; at its shortest they hang level with the knot.",
+                    new AcceptableValueRange<float>(0.2f, 5f)));
+
+            HangFlareAmount = config.Bind(
+                "Hanging Sausages",
+                "Flare",
+                0.75f,
+                new ConfigDescription(
+                    "How far each sausage leans out from its tie. 1 leans just enough to clear the bunch below. 0 hangs them straight down.",
+                    new AcceptableValueRange<float>(0f, 3f)));
 
             HooksEnabled = config.Bind(
                 "Hooks",

@@ -28,6 +28,9 @@ namespace Dizzy.FirewoodBundle
         // A pile's slope at steepness 1, height per meter out from the middle, and how
         // many spots each sausage tries before it settles.
         private const float PileSlope = 0.6f;
+        // How far below the hang point the first bunch is tied, and how thick its strings are.
+        private const float HangTop = 0.05f;
+        private const float HangCord = 0.003f;
         private const int PileTries = 8;
 
         private static readonly Dictionary<int, int> Stamps = new Dictionary<int, int>();
@@ -96,7 +99,10 @@ namespace Dizzy.FirewoodBundle
 
         internal static void Apply(ShipItem item)
         {
-            if (item == null || FirewoodPieces.CountOf(item) <= 1)
+            if (item == null)
+                return;
+            bool hanging = FirewoodPieces.KindOf(item) == BundleKind.HangingSausage;
+            if (!hanging && FirewoodPieces.CountOf(item) <= 1)
                 return;
 
             ApplyNow(item);
@@ -154,6 +160,12 @@ namespace Dizzy.FirewoodBundle
 
         private static void ApplyNow(ShipItem item)
         {
+            if (FirewoodPieces.KindOf(item) == BundleKind.HangingSausage)
+            {
+                ApplyHanging(item);
+                return;
+            }
+
             int count = FirewoodPieces.CountOf(item);
             if (count <= 1)
                 return;
@@ -172,7 +184,7 @@ namespace Dizzy.FirewoodBundle
             }
 
             BundleKind kind = FirewoodPieces.KindOf(item);
-            float pitch = cross * (kind != null ? kind.Pitch : 0.97f);
+            float pitch = cross * (kind != null ? kind.Spacing : 0.97f);
             List<Quaternion> turns = null;
             List<Vector3> centers;
             if (kind == BundleKind.Sausage && mesh != null && SausageStacks.WidthOf(item) == SausageStacks.TreeWidth)
@@ -539,6 +551,176 @@ namespace Dizzy.FirewoodBundle
             return mesh.bounds.size[upAxis] * 0.15f;
         }
 
+        // A hanging bundle: a central string drops from the hook, and the sausages hang
+        // straight down around it in bunches, each on a short string tied to it. A bunch
+        // holds Bunch Size sausages on a ring wide enough that they do not touch; when it
+        // is full the next bunch starts lower and a little wider, turned half a place so
+        // its sausages hang between the ones above. A sausage's place depends only on its
+        // index, so adding one never moves the rest. The item's origin is the hang point.
+        private static void ApplyHanging(ShipItem item)
+        {
+            MeshRenderer source = item.GetComponent<MeshRenderer>();
+            MeshFilter filter = item.GetComponent<MeshFilter>();
+            Mesh mesh = filter != null ? filter.sharedMesh : null;
+            float cross;
+            int longAxis;
+            if (mesh == null || source == null || !FirewoodPieces.TryMeasure(item, out cross, out longAxis))
+                return;
+
+            int count = FirewoodPieces.CountOf(item);
+            int upAxis = longAxis == StackUpAxis ? (StackUpAxis + 1) % 3 : StackUpAxis;
+            int sideAxis = 3 - longAxis - upAxis;
+            Vector3 up = Vector3.zero;
+            up[upAxis] = 1f;
+            Vector3 along = Vector3.zero;
+            along[longAxis] = 1f;
+            Vector3 sideA = Vector3.zero;
+            sideA[sideAxis] = 1f;
+            Vector3 sideB = Vector3.zero;
+            sideB[longAxis] = 1f;
+            Bounds stick = mesh.bounds;
+            float thickness = stick.size[sideAxis] * 0.88f;
+            int perBunch = FirewoodBundleConfig.BunchSize;
+            float ring = thickness / (2f * Mathf.Sin(Mathf.PI / perBunch)) * FirewoodBundleConfig.BunchRadius;
+            float drop = thickness * 1.5f * FirewoodBundleConfig.BunchDrop;
+            // Every bunch is tied close to the middle string, at the same radius. Each
+            // sausage leans out from its top just enough that, one bunch down, it has
+            // cleared the next bunch's tops, which sit in the gaps half a step around.
+            float gap = Mathf.PI / perBunch;
+            float cosGap = Mathf.Cos(gap);
+            float clear = ring * cosGap + Mathf.Sqrt(Mathf.Max(0f, thickness * thickness - ring * ring * (1f - cosGap * cosGap)));
+            float leanAngle = Mathf.Asin(Mathf.Clamp01(Mathf.Max(0f, clear - ring) / drop)) * FirewoodBundleConfig.HangFlare;
+            leanAngle = Mathf.Min(leanAngle, 45f * Mathf.Deg2Rad);
+            SaveablePrefab save = item.GetComponent<SaveablePrefab>();
+            int seed = save != null ? save.instanceId : 0;
+
+            ClearSticks(item);
+            ClearHull(item);
+            source.enabled = false;
+            Material[] materials = source.sharedMaterials;
+            // White cord: the firewood palette's White, matte like cord rather than a ribbon.
+            Material cord = StringMaterial(BundleKind.Firewood, System.Array.IndexOf(BundleKind.Firewood.ColorNames, "White"));
+            var renderers = new List<Renderer>();
+            var centers = new List<Vector3>(count);
+            var turns = new List<Quaternion>(count);
+            // Sausages hang with their long axis down. The mesh's low end along that
+            // axis is the one tied, so it goes to the top.
+            Quaternion hang = Quaternion.FromToRotation(along, -up);
+            Vector3 tiedEnd = stick.center;
+            tiedEnd[longAxis] = stick.min[longAxis];
+            float lowest = 0f;
+
+            for (int i = 0; i < count; i++)
+            {
+                int bunch = i / perBunch;
+                int place = i % perBunch;
+                float knot = -(HangTop + bunch * drop);
+                // A bunch that is not full yet closes up around the string: its ring fits
+                // the sausages it has, not the ones it could hold.
+                int inBunch = Mathf.Min(perBunch, count - bunch * perBunch);
+                float radius = inBunch > 1
+                    ? thickness / (2f * Mathf.Sin(Mathf.PI / inBunch)) * FirewoodBundleConfig.BunchRadius
+                    : thickness * 0.5f * FirewoodBundleConfig.BunchRadius;
+                float angle = (place + (bunch % 2) * 0.5f) * Mathf.PI * 2f / inBunch;
+                Vector3 outward = sideA * Mathf.Cos(angle) + sideB * Mathf.Sin(angle);
+                // The string runs from the knot out to the sausage's top. Its length sets
+                // how far below the knot the sausage hangs; the bunch's radius stays put.
+                float reach = Mathf.Sqrt(radius * radius + thickness * thickness * 0.36f) * FirewoodBundleConfig.HangStringLength;
+                float tie = Mathf.Sqrt(Mathf.Max(0f, reach * reach - radius * radius));
+                Vector3 top = outward * radius + up * (knot - tie);
+                Quaternion spin = Quaternion.AngleAxis(PileHash(seed, i, 8) * 360f, up);
+                Quaternion sway = Quaternion.AngleAxis((PileHash(seed, i, 9) - 0.5f) * 8f, outward);
+                Quaternion lean = Quaternion.FromToRotation(-up, (-up * Mathf.Cos(leanAngle) + outward * Mathf.Sin(leanAngle)).normalized);
+                Quaternion turn = lean * sway * spin * hang;
+                Vector3 place3D = top - turn * tiedEnd;
+                renderers.Add(CreateStick(item, mesh, materials, place3D, turn, source));
+                centers.Add(place3D);
+                turns.Add(turn);
+                lowest = Mathf.Min(lowest, knot);
+                if (cord != null)
+                    renderers.Add(CreateCordPiece(item, cord, up * knot, top, upAxis));
+            }
+
+            if (cord != null)
+                renderers.Add(CreateCordPiece(item, cord, Vector3.zero, up * lowest, sideAxis));
+            IncludeInLod(item, renderers);
+
+            item.lookText = FirewoodPieces.LookText(item, count);
+            item.description = "";
+            item.big = false;
+            ShipItem prefab = FirewoodPieces.PrefabOf(item);
+            if (prefab != null)
+                item.holdDistance = prefab.holdDistance + ring;
+            ApplyMass(item, count);
+            Bounds bundle = BundleBounds(centers, mesh, turns);
+            bundle.Encapsulate(Vector3.zero);
+            bundle.Expand(0.01f);
+            FitBox(item, bundle);
+            if (item.GetComponent<HangableItem>() == null)
+                item.gameObject.AddComponent<HangableItem>();
+            QuietHull(item);
+        }
+
+        // One straight piece of string. The frame axis is the one most across it.
+        private static Renderer CreateCordPiece(ShipItem item, Material material, Vector3 from, Vector3 to, int frameAxis)
+        {
+            Vector3 direction = to - from;
+            if (direction.sqrMagnitude < 0.000001f)
+                return null;
+            int best = frameAxis;
+            float least = float.MaxValue;
+            for (int axis = 0; axis < 3; axis++)
+            {
+                float lean = Mathf.Abs(direction.normalized[axis]);
+                if (lean < least)
+                {
+                    least = lean;
+                    best = axis;
+                }
+            }
+
+            Mesh mesh = CordMesh(new List<Vector3> { from, to }, best, HangCord, false, StringName);
+            if (mesh == null)
+                return null;
+            var piece = new GameObject(StringName);
+            piece.layer = item.gameObject.layer;
+            piece.transform.SetParent(item.transform, false);
+            MeshFilter filter = piece.AddComponent<MeshFilter>();
+            filter.sharedMesh = mesh;
+            MeshRenderer renderer = piece.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            Outline rootOutline = item.GetComponent<Outline>();
+            Outline outline = piece.AddComponent<Outline>();
+            outline.enabled = false;
+            if (rootOutline != null)
+            {
+                outline.color = rootOutline.color;
+                outline.eraseRenderer = rootOutline.eraseRenderer;
+                outline.originalLayer = rootOutline.originalLayer;
+            }
+
+            return renderer;
+        }
+
+        // Off the hook and back to one plain sausage: no strings, no hanging.
+        internal static void Unhang(ShipItem item)
+        {
+            if (item == null)
+                return;
+            HangableItem hang = item.GetComponent<HangableItem>();
+            if (hang != null)
+            {
+                if (hang.IsHanging())
+                    hang.DisconnectJoint();
+                Object.Destroy(hang);
+            }
+
+            SausageStacks.Unhang(item);
+            RestoreSingle(item);
+        }
+
         private static void AdoptTwoHandedHold(ShipItem item)
         {
             GoPointer pointer = item.held;
@@ -635,7 +817,9 @@ namespace Dizzy.FirewoodBundle
 
         internal static void SyncOutline(ShipItem item)
         {
-            if (item == null || FirewoodPieces.CountOf(item) <= 1)
+            if (item == null)
+                return;
+            if (FirewoodPieces.CountOf(item) <= 1 && FirewoodPieces.KindOf(item) != BundleKind.HangingSausage)
                 return;
 
             Outline root = item.GetComponent<Outline>();
@@ -658,6 +842,14 @@ namespace Dizzy.FirewoodBundle
                 if (outline.enabled != root.enabled)
                     outline.enabled = root.enabled;
             }
+
+            // The item's own mesh is hidden behind the copies. Its outline would still draw
+            // a sausage at the item's origin, which on a hanging bundle is the hang point.
+            // The game sets the root outline again on every color update, so the copies
+            // above have already taken its state.
+            Renderer own = item.GetComponent<Renderer>();
+            if (own != null && !own.enabled && root.enabled)
+                root.enabled = false;
         }
 
         private static Renderer CreateString(

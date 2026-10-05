@@ -11,7 +11,7 @@ namespace Dizzy.FirewoodBundle
     {
         public const string PluginGuid = "com.dizzy.sailwind.firewoodbundle";
         public const string PluginName = "Dizzy Firewood Bundle";
-        public const string PluginVersion = "0.5.0";
+        public const string PluginVersion = "0.6.0";
 
         internal static ManualLogSource Log;
         internal static Plugin Instance;
@@ -45,6 +45,8 @@ namespace Dizzy.FirewoodBundle
                 + ", MaxSausages=" + FirewoodBundleConfig.MaxSausages.Value
                 + ", Sausage Spacing=" + FirewoodBundleConfig.SausageSpacingAmount.Value
                 + ", Pile Steepness=" + FirewoodBundleConfig.PileSteepnessAmount.Value
+                + ", Hanging Sausages=" + FirewoodBundleConfig.HangingEnabled.Value
+                + ", MaxHanging=" + FirewoodBundleConfig.MaxHanging.Value
                 + ", Hooks=" + FirewoodBundleConfig.HooksEnabled.Value
                 + ", MaxHooks=" + FirewoodBundleConfig.MaxHooks.Value
                 + ", Hook Messiness=" + FirewoodBundleConfig.HookMessiness.Value

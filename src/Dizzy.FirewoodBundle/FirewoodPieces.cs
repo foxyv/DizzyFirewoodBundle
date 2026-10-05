@@ -143,7 +143,7 @@ namespace Dizzy.FirewoodBundle
         internal static string LookText(ShipItem item, int count)
         {
             BundleKind kind = KindOf(item);
-            if (kind == BundleKind.Sausage)
+            if (kind == BundleKind.Sausage || kind == BundleKind.HangingSausage)
                 return SausageStacks.Label(item, count);
             return kind != null ? kind.LookText(count) : "";
         }
@@ -170,7 +170,14 @@ namespace Dizzy.FirewoodBundle
         internal static bool CanTargetKind(ShipItem held, ShipItem target)
         {
             BundleKind kind = KindOf(held);
-            if (kind == null || !kind.IsEnabled || KindOf(target) != kind || held == target)
+            BundleKind targetKind = KindOf(target);
+            // Sausages in hand also go onto a hanging bundle.
+            bool onHook = targetKind == BundleKind.HangingSausage && SausageStacks.IsSausage(held);
+            if (kind == null || !kind.IsEnabled || held == target)
+                return false;
+            if (targetKind != kind && !onHook)
+                return false;
+            if (onHook && !targetKind.IsEnabled)
                 return false;
             if (!held.sold || !target.sold || target.unclickable)
                 return false;
@@ -180,7 +187,8 @@ namespace Dizzy.FirewoodBundle
             ItemRigidbody body = target.itemRigidbodyC;
             if (body != null)
             {
-                if (body.inStove)
+                // Hanging marks the body as held in place, the same flag a stove uses.
+                if (body.inStove && targetKind != BundleKind.HangingSausage)
                     return false;
                 if (body.GetCurrentInventorySlot() != null)
                     return false;
@@ -319,7 +327,8 @@ namespace Dizzy.FirewoodBundle
                 return false;
             }
 
-            if (CountOf(target) > 1 || target.nailed)
+            // A hanging bundle stays on its hook, even with one sausage, and takes the held ones.
+            if (CountOf(target) > 1 || target.nailed || KindOf(target) == BundleKind.HangingSausage)
                 return AddHeldToPile(held, target, pointer, count);
 
             int previousCount = CountOf(held);
@@ -413,7 +422,10 @@ namespace Dizzy.FirewoodBundle
             BundleKind kind = KindOf(pile);
             int heldCount = CountOf(held);
             int pileCount = CountOf(pile);
-            if (kind == null || heldCount <= 1 || (pileCount <= 1 && !pile.nailed))
+            bool keeps = pileCount > 1 || pile.nailed || kind == BundleKind.HangingSausage;
+            if (kind == null || heldCount < 1 || !keeps)
+                return 0;
+            if (heldCount <= 1 && kind != BundleKind.HangingSausage)
                 return 0;
             if (heldCount + pileCount <= kind.Limit)
                 return 0;
@@ -512,6 +524,8 @@ namespace Dizzy.FirewoodBundle
         // The bundle stays where it is. A held stack only grows when the click hits another piece.
         internal static bool TrySplit(ShipItem bundle)
         {
+            if (KindOf(bundle) == BundleKind.HangingSausage)
+                return TakeHanging(bundle);
             if (!IsActive(bundle) || CountOf(bundle) <= 1)
                 return false;
             if (bundle.held != null)
@@ -568,6 +582,53 @@ namespace Dizzy.FirewoodBundle
 
             pointer.PickUpItem(log);
             Plugin.Log.LogInfo("Took 1 from the " + KindOf(bundle).BundleName + ". " + left + " left.");
+            return true;
+        }
+
+        // A hanging bundle gives one sausage to an empty hand. The last one comes off the
+        // hook with the strings gone, a plain sausage again.
+        private static bool TakeHanging(ShipItem bundle)
+        {
+            if (!IsActive(bundle) || bundle.held != null || !bundle.sold)
+                return false;
+            GoPointer pointer = PointerFor(bundle);
+            if (pointer == null || pointer.GetHeldItem() != null)
+                return false;
+
+            int count = CountOf(bundle);
+            if (count <= 1)
+            {
+                FirewoodBundleBuilder.Unhang(bundle);
+                pointer.PickUpItem(bundle);
+                Plugin.Log.LogInfo("Took the last sausage off the hook.");
+                return true;
+            }
+
+            ShipItem template = PrefabOf(bundle);
+            float distance = template != null ? template.holdDistance : 0.4f;
+            float height = template != null ? template.holdHeight : 0f;
+            Vector3 position = pointer.transform.position + pointer.transform.forward * distance + pointer.transform.up * height;
+            ShipItem single = SpawnSingle(bundle, position, pointer.transform.rotation);
+            if (single == null || single.itemRigidbodyC == null)
+            {
+                if (single != null)
+                    Object.Destroy(single.gameObject);
+                return false;
+            }
+
+            SaveablePrefab saveable = single.GetComponent<SaveablePrefab>();
+            SaveablePrefab bundleSave = bundle.GetComponent<SaveablePrefab>();
+            if (saveable != null)
+            {
+                if (bundleSave != null)
+                    saveable.SetParentObject(bundleSave.GetParentObject());
+                saveable.RegisterToSave();
+            }
+
+            WriteCount(bundle, count - 1);
+            FirewoodBundleBuilder.Apply(bundle);
+            pointer.PickUpItem(single);
+            Plugin.Log.LogInfo("Took 1 sausage off the hook. " + (count - 1) + " left.");
             return true;
         }
 
