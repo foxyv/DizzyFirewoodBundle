@@ -12,9 +12,23 @@ namespace Dizzy.FirewoodBundle
         private const string StringName = "FirewoodBundleString";
         private const string KnotName = "FirewoodBundleKnot";
         private const string BoxMeshName = "FirewoodBundleBox";
+        private const string HullName = "BundleColliderHull";
+        // Directions and heights the hull is measured in, how far it sits outside the
+        // pieces, and how much of the base's width the core box takes.
+        private const int HullSides = 12;
+        private const int HullBands = 5;
+        private const float HullMargin = 0.01f;
+        private const float CoreShare = 0.35f;
+        private static readonly Dictionary<int, Mesh> HullMeshes = new Dictionary<int, Mesh>();
+        private static readonly System.Reflection.FieldInfo SubcollidersField = AccessTools.Field(typeof(ItemRigidbody), "subcolliders");
+        private static readonly System.Reflection.FieldInfo BodyField = AccessTools.Field(typeof(ItemRigidbody), "rigidbody");
         private const float RibbonThickness = 0.0016f;
         // Local Y. If a placed sausage tower lies on its side, this is the axis to change.
         private const int StackUpAxis = 1;
+        // A pile's slope at steepness 1, height per meter out from the middle, and how
+        // many spots each sausage tries before it settles.
+        private const float PileSlope = 0.6f;
+        private const int PileTries = 8;
 
         private static readonly Dictionary<int, int> Stamps = new Dictionary<int, int>();
         private static readonly Dictionary<int, int> HullStamps = new Dictionary<int, int>();
@@ -34,6 +48,7 @@ namespace Dizzy.FirewoodBundle
             Stamps[id] = stamp;
 
             ClearSticks(item);
+            ClearHull(item);
             Renderer root = item.GetComponent<Renderer>();
             if (root != null)
             {
@@ -113,6 +128,13 @@ namespace Dizzy.FirewoodBundle
             }
 
             ReleaseStringMesh(item);
+            Mesh hull;
+            if (HullMeshes.TryGetValue(id, out hull))
+            {
+                HullMeshes.Remove(id);
+                if (hull != null)
+                    Object.Destroy(hull);
+            }
         }
 
         private static IEnumerator ApplyLater(ShipItem item, int id, int stamp)
@@ -153,7 +175,9 @@ namespace Dizzy.FirewoodBundle
             float pitch = cross * (kind != null ? kind.Pitch : 0.97f);
             List<Quaternion> turns = null;
             List<Vector3> centers;
-            if (kind == BundleKind.Sausage && mesh != null && SausageStacks.WidthOf(item) == SausageStacks.PileWidth)
+            if (kind == BundleKind.Sausage && mesh != null && SausageStacks.WidthOf(item) == SausageStacks.TreeWidth)
+                centers = TreeCenters(item, count, mesh, longAxis, FirewoodBundleConfig.SausageSpacing, out turns);
+            else if (kind == BundleKind.Sausage && mesh != null && SausageStacks.WidthOf(item) == SausageStacks.PileWidth)
                 centers = PileCenters(item, count, mesh, longAxis, FirewoodBundleConfig.SausageSpacing, out turns);
             else if (kind == BundleKind.Sausage && mesh != null)
                 centers = StackCenters(item, count, mesh, longAxis, FirewoodBundleConfig.SausageSpacing);
@@ -167,12 +191,15 @@ namespace Dizzy.FirewoodBundle
                 var renderers = new List<Renderer>();
                 for (int i = 0; i < centers.Count; i++)
                     renderers.Add(CreateStick(item, mesh, materials, centers[i], turns != null ? turns[i] : Quaternion.identity, source));
-                if (kind == null || kind.Tie != TieStyle.None)
+                // An Auto sausage stack is a neat block, so it gets a cord like firewood.
+                bool tiedStack = kind == BundleKind.Sausage && SausageStacks.WidthOf(item) == 0;
+                int tieUp = tiedStack ? (longAxis == StackUpAxis ? (StackUpAxis + 1) % 3 : StackUpAxis) : -1;
+                if (kind == null || kind.Tie != TieStyle.None || tiedStack)
                 {
-                    Renderer tie = CreateString(item, centers, mesh, longAxis, cross, source);
+                    Renderer tie = CreateString(item, centers, mesh, longAxis, cross, source, tieUp);
                     if (tie != null)
                         renderers.Add(tie);
-                    Renderer knot = CreateKnot(item, centers, mesh, longAxis, cross);
+                    Renderer knot = CreateKnot(item, centers, mesh, longAxis, cross, tieUp);
                     if (knot != null)
                         renderers.Add(knot);
                 }
@@ -189,7 +216,8 @@ namespace Dizzy.FirewoodBundle
                 AdoptTwoHandedHold(item);
             ApplyMass(item, count);
             ApplyHoldDistance(item, centers, longAxis, cross);
-            FitColliders(item, centers, mesh, turns);
+            int upAxis = longAxis == StackUpAxis ? (StackUpAxis + 1) % 3 : StackUpAxis;
+            FitColliders(item, centers, mesh, turns, upAxis);
             // Growing the physics shape while the hull is heeled over shoves the boat.
             // Ignore the hull capsule until the bundle is clear of it.
             QuietHull(item);
@@ -211,14 +239,15 @@ namespace Dizzy.FirewoodBundle
                 SausageStacks.WidthOf(item));
         }
 
-        // A pile grows toward a pyramid in shells. After S shells, layer L holds
+        // A tree grows toward a pyramid in shells. After S shells, layer L holds
         // ceil(S - L / steepness) sausages: steepness 1 makes a pyramid S wide and S high,
         // 0.5 one about half as high, 2 one about twice as high. Each shell adds one
         // sausage to the outer edge of every layer still wide enough, alternating sides,
-        // and fills from the bottom up, so a new sausage always has one under it. Layers cross at roughly right angles
-        // with some play. A sausage's place depends only on its index and the stack's
-        // saved id, so adding one never moves the rest, and a reloaded pile looks the same.
-        private static List<Vector3> PileCenters(
+        // and fills from the bottom up, so a new sausage always has one under it. Layers
+        // cross at roughly right angles with some play. A sausage's place depends only on
+        // its index and the stack's saved id, so adding one never moves the rest, and a
+        // reloaded tree looks the same.
+        private static List<Vector3> TreeCenters(
             ShipItem item,
             int count,
             Mesh mesh,
@@ -268,10 +297,228 @@ namespace Dizzy.FirewoodBundle
             return centers;
         }
 
-        // How many sausages layer L holds once the pile has this many shells.
+        // How many sausages layer L holds once the tree has this many shells.
         private static int PileLayerWidth(int layer, int shell, float steepness)
         {
             return Mathf.CeilToInt(shell - layer / steepness - 0.0001f);
+        }
+
+        // A pile is sausages dropped one at a time onto the ones already there. Each one
+        // tries a few random spots on the heap or just past its edge, pointing any way,
+        // and settles where it rests lowest, counting distance from the middle as extra
+        // height. That rolls it off high spots into gaps, so the heap grows as a cone with
+        // a steady slope; steepness sets that slope. Then it slides in toward the middle
+        // for as long as it does not have to climb, so it ends up against the sausages
+        // already there. At each spot it lies like a stiff stick on what is under it (see
+        // PileShape). Each sausage depends only on the ones before it, so adding one never
+        // moves the rest. Spacing sets how thick a sausage counts as, so how close they pack.
+        private static List<Vector3> PileCenters(
+            ShipItem item,
+            int count,
+            Mesh mesh,
+            int longAxis,
+            float spacing,
+            out List<Quaternion> turns)
+        {
+            int upAxis = longAxis == StackUpAxis ? (StackUpAxis + 1) % 3 : StackUpAxis;
+            int columnAxis = 3 - longAxis - upAxis;
+            Vector3 size = mesh.bounds.size;
+            Vector3 up = Vector3.zero;
+            up[upAxis] = 1f;
+            Vector3 along = Vector3.zero;
+            along[longAxis] = 1f;
+            Vector3 across = Vector3.zero;
+            across[columnAxis] = 1f;
+            SaveablePrefab save = item.GetComponent<SaveablePrefab>();
+            int seed = save != null ? save.instanceId : 0;
+
+            // The mesh's width is close to the sausage's real thickness; its height also
+            // holds the bend along it.
+            float thickness = size[columnAxis] * spacing;
+            var pile = new PileShape(size[longAxis], thickness, count);
+            float slope = PileSlope * FirewoodBundleConfig.PileSteepness;
+            var centers = new List<Vector3>(count);
+            turns = new List<Quaternion>(count);
+            // How far out the heap reaches so far. A sausage lands on it or a short step past.
+            float edge = 0f;
+
+            for (int i = 0; i < count; i++)
+            {
+                float circle = i == 0 ? size[longAxis] * 0.2f : edge + size[longAxis] * 0.4f;
+                float bestCost = float.MaxValue;
+                Vector2 bestMiddle = Vector2.zero;
+                Vector2 bestHeading = Vector2.right;
+                float bestHeight = 0f;
+                float bestTilt = 0f;
+                for (int attempt = 0; attempt < PileTries; attempt++)
+                {
+                    int draw = i * 16 + attempt;
+                    float radius = circle * Mathf.Sqrt(PileHash(seed, draw, 4));
+                    float angle = PileHash(seed, draw, 5) * Mathf.PI * 2f;
+                    Vector2 middle = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+                    // Just under 180: turning a sausage exactly backwards has no single rotation.
+                    float yaw = PileHash(seed, draw, 6) * 179f * Mathf.Deg2Rad;
+                    Vector2 heading = new Vector2(Mathf.Cos(yaw), Mathf.Sin(yaw));
+                    float tilt;
+                    float height = pile.RestingHeight(middle, heading, out tilt);
+                    float cost = height + slope * middle.magnitude;
+                    if (cost >= bestCost)
+                        continue;
+                    bestCost = cost;
+                    bestMiddle = middle;
+                    bestHeading = heading;
+                    bestHeight = height;
+                    bestTilt = tilt;
+                }
+
+                if (i > 0)
+                    SlideIn(pile, thickness * 0.25f, ref bestMiddle, bestHeading, ref bestHeight, ref bestTilt);
+                pile.Add(bestMiddle, bestHeading, bestHeight, bestTilt);
+                edge = Mathf.Max(edge, bestMiddle.magnitude);
+
+                // Turn about up for the heading, tip along its length for the tilt, and
+                // roll it a little so its curve faces different ways.
+                Vector3 pointing = along * bestHeading.x + across * bestHeading.y;
+                Quaternion heading3D = Quaternion.FromToRotation(along, pointing);
+                Quaternion tip = Quaternion.FromToRotation(pointing, (pointing + up * bestTilt).normalized);
+                Quaternion roll = Quaternion.AngleAxis((PileHash(seed, i, 7) - 0.5f) * 50f, along);
+                centers.Add(along * bestMiddle.x + across * bestMiddle.y + up * bestHeight);
+                turns.Add(tip * heading3D * roll);
+            }
+
+            return centers;
+        }
+
+        // Moves a sausage toward the middle a step at a time while it rests no higher,
+        // so it stops against whatever it would have to climb over.
+        private static void SlideIn(PileShape pile, float step, ref Vector2 middle, Vector2 heading, ref float height, ref float tilt)
+        {
+            for (int i = 0; i < 200; i++)
+            {
+                float radius = middle.magnitude;
+                if (radius < step)
+                    return;
+                Vector2 next = middle - middle / radius * step;
+                float nextTilt;
+                float nextHeight = pile.RestingHeight(next, heading, out nextTilt);
+                if (nextHeight > height + 0.002f)
+                    return;
+                middle = next;
+                height = nextHeight;
+                tilt = nextTilt;
+            }
+        }
+
+        // The sausages already in a pile, flattened onto the ground plane: where each
+        // middle is, which way it points, how high its middle sits, and how that height
+        // changes per meter along it.
+        private sealed class PileShape
+        {
+            private const int SampleCount = 7;
+            private static readonly float MaxTilt = Mathf.Tan(50f * Mathf.Deg2Rad);
+
+            private readonly float _length;
+            private readonly float _half;
+            private readonly float _thickness;
+            private readonly float _near;
+            private readonly float[] _along = new float[SampleCount];
+            private readonly float[] _under = new float[SampleCount];
+            private readonly List<Vector2> _middles;
+            private readonly List<Vector2> _headings;
+            private readonly List<float> _heights;
+            private readonly List<float> _tilts;
+
+            internal PileShape(float length, float thickness, int capacity)
+            {
+                _length = length;
+                _half = length * 0.5f;
+                _thickness = thickness;
+                // Two sausages whose middles are farther apart than this cannot touch.
+                _near = (length + thickness) * (length + thickness);
+                for (int k = 0; k < SampleCount; k++)
+                    _along[k] = (-0.48f + 0.96f * k / (SampleCount - 1)) * length;
+                _middles = new List<Vector2>(capacity);
+                _headings = new List<Vector2>(capacity);
+                _heights = new List<float>(capacity);
+                _tilts = new List<float>(capacity);
+            }
+
+            internal void Add(Vector2 middle, Vector2 heading, float height, float tilt)
+            {
+                _middles.Add(middle);
+                _headings.Add(heading);
+                _heights.Add(height);
+                _tilts.Add(tilt);
+            }
+
+            // A sausage here lies like a stiff stick: its middle sits as low as it can while
+            // every point along it stays on or above what is under it. That leaves it
+            // touching on both sides of its middle, so it does not hang off one end. If it
+            // only touches at its middle, it tips until an end comes down.
+            internal float RestingHeight(Vector2 middle, Vector2 heading, out float tilt)
+            {
+                for (int k = 0; k < SampleCount; k++)
+                    _under[k] = SupportAt(middle, middle + heading * _along[k]);
+
+                // The lowest middle is set by one support on each side of it, or by the
+                // tilt limit, so those are the only tilts worth checking.
+                float bestHeight = HeightAt(-MaxTilt);
+                tilt = -MaxTilt;
+                Consider(MaxTilt, ref bestHeight, ref tilt);
+                for (int a = 0; a < SampleCount; a++)
+                {
+                    for (int b = a + 1; b < SampleCount; b++)
+                    {
+                        if ((_along[a] < 0f) == (_along[b] < 0f))
+                            continue;
+                        float through = (_under[a] - _under[b]) / (_along[a] - _along[b]);
+                        Consider(Mathf.Clamp(through, -MaxTilt, MaxTilt), ref bestHeight, ref tilt);
+                    }
+                }
+
+                return bestHeight;
+            }
+
+            private void Consider(float tilt, ref float bestHeight, ref float bestTilt)
+            {
+                float height = HeightAt(tilt);
+                bool lower = height < bestHeight - 0.000001f;
+                bool sameButTipped = height <= bestHeight + 0.000001f && Mathf.Abs(tilt) > Mathf.Abs(bestTilt);
+                if (!lower && !sameButTipped)
+                    return;
+                bestHeight = height;
+                bestTilt = tilt;
+            }
+
+            // How high the middle must sit at this tilt to clear every point under it.
+            private float HeightAt(float tilt)
+            {
+                float height = 0f;
+                for (int k = 0; k < SampleCount; k++)
+                    height = Mathf.Max(height, _under[k] - tilt * _along[k]);
+                return height;
+            }
+
+            // Two round sausages touch higher the more directly one is over the other: one
+            // straight on top sits a full thickness up, one beside it rides up only a little
+            // and settles into the groove.
+            private float SupportAt(Vector2 middle, Vector2 point)
+            {
+                float support = 0f;
+                float reach = _thickness * _thickness;
+                for (int j = 0; j < _middles.Count; j++)
+                {
+                    if ((middle - _middles[j]).sqrMagnitude > _near)
+                        continue;
+                    float t = Mathf.Clamp(Vector2.Dot(point - _middles[j], _headings[j]), -_half, _half);
+                    float apart = (point - (_middles[j] + _headings[j] * t)).sqrMagnitude;
+                    if (apart >= reach)
+                        continue;
+                    support = Mathf.Max(support, _heights[j] + _tilts[j] * t + Mathf.Sqrt(reach - apart));
+                }
+
+                return support;
+            }
         }
 
         private static float PileHash(int seed, int index, int salt)
@@ -284,6 +531,12 @@ namespace Dizzy.FirewoodBundle
                 h ^= h >> 15;
                 return (h & 0xFFFFFF) / 16777215f;
             }
+        }
+
+        // How far a sausage stack's cord top comes down: 15% of a sausage's thickness.
+        private static float StackTopDrop(Mesh mesh, int upAxis)
+        {
+            return mesh.bounds.size[upAxis] * 0.15f;
         }
 
         private static void AdoptTwoHandedHold(ShipItem item)
@@ -413,7 +666,8 @@ namespace Dizzy.FirewoodBundle
             Mesh logMesh,
             int longAxis,
             float cross,
-            MeshRenderer source)
+            MeshRenderer source,
+            int upAxis = -1)
         {
             if (item == null || centers == null || centers.Count < 2 || logMesh == null)
                 return null;
@@ -428,8 +682,9 @@ namespace Dizzy.FirewoodBundle
             float ribbonWidth = Mathf.Clamp(cross * 0.55f, 0.008f, 0.025f);
             // A flat ribbon hugs the pieces. The loop runs through its middle.
             float cord = ribbon ? RibbonThickness * 0.5f + 0.0005f : Mathf.Clamp(cross * 0.055f, 0.0032f, 0.0075f);
-            int axisA = (longAxis + 1) % 3;
-            int axisB = (longAxis + 2) % 3;
+            // The loop's second axis is the one rows stack along; a sausage stack names its own.
+            int axisB = upAxis >= 0 ? upAxis : (longAxis + 2) % 3;
+            int axisA = 3 - longAxis - axisB;
             float halfA = bundle.size[axisA] * 0.5f + cord;
             float halfB = bundle.size[axisB] * 0.5f + cord;
             float corner = Mathf.Min(cross * 0.5f + cord, halfA, halfB);
@@ -439,6 +694,21 @@ namespace Dizzy.FirewoodBundle
             List<Vector3> loop = PartialTopLoop(centers, logMesh, bundle.center, axisA, axisB, cord, cross);
             if (loop == null)
                 loop = StringLoop(bundle.center, axisA, axisB, halfA, halfB, corner, cross);
+            // A sausage's box holds its bend, so its top sits above the sausage. Pull the
+            // top half of the loop down onto it, stretching the sides rather than stepping.
+            if (upAxis >= 0)
+            {
+                float middle = bundle.center[axisB];
+                float reach = halfB;
+                float drop = StackTopDrop(logMesh, axisB);
+                for (int i = 0; i < loop.Count; i++)
+                {
+                    Vector3 point = loop[i];
+                    if (point[axisB] > middle && reach > drop)
+                        point[axisB] = middle + (point[axisB] - middle) * (reach - drop) / reach;
+                    loop[i] = point;
+                }
+            }
             Mesh cordMesh = ribbon
                 ? BandMesh(loop, longAxis, RibbonThickness * 0.5f, ribbonWidth * 0.5f)
                 : CordMesh(loop, longAxis, cord);
@@ -479,7 +749,8 @@ namespace Dizzy.FirewoodBundle
             List<Vector3> centers,
             Mesh logMesh,
             int longAxis,
-            float cross)
+            float cross,
+            int stackUp = -1)
         {
             if (item == null || centers == null || centers.Count < 2 || logMesh == null)
                 return null;
@@ -490,8 +761,8 @@ namespace Dizzy.FirewoodBundle
                 return null;
             bool ribbon = kind != null && kind.Ribbon;
 
-            int axisA = (longAxis + 1) % 3;
-            int upAxis = (longAxis + 2) % 3;
+            int upAxis = stackUp >= 0 ? stackUp : (longAxis + 2) % 3;
+            int axisA = 3 - longAxis - upAxis;
             float topRow = float.MinValue;
             for (int i = 0; i < centers.Count; i++)
                 topRow = Mathf.Max(topRow, centers[i][upAxis]);
@@ -520,7 +791,7 @@ namespace Dizzy.FirewoodBundle
             Vector3 origin = Vector3.zero;
             origin[axisA] = (minA + maxA) * 0.5f;
             origin[longAxis] = (minLong + maxLong) * 0.5f;
-            origin[upAxis] = topRow + logMesh.bounds.max[upAxis];
+            origin[upAxis] = topRow + logMesh.bounds.max[upAxis] - (stackUp >= 0 ? StackTopDrop(logMesh, upAxis) : 0f);
             var left = new List<Vector3> { origin, origin - along * spread + up * rise };
             var right = new List<Vector3> { origin, origin + along * spread + up * rise };
             Mesh knotMesh;
@@ -1082,8 +1353,12 @@ namespace Dizzy.FirewoodBundle
 
         private static Material StringMaterial(BundleKind kind, int color)
         {
-            if (kind == null)
+            // A kind without its own colors (sausages) is tied with brown firewood cord.
+            if (kind == null || kind.ColorCount == 0)
+            {
                 kind = BundleKind.Firewood;
+                color = 0;
+            }
             if (color < 0 || color >= kind.ColorCount)
                 color = 0;
             string key = kind.BundleName + "/" + color;
@@ -1285,10 +1560,29 @@ namespace Dizzy.FirewoodBundle
             return false;
         }
 
-        private static void FitColliders(ShipItem item, List<Vector3> centers, Mesh mesh, List<Quaternion> turns)
+        private static void FitColliders(ShipItem item, List<Vector3> centers, Mesh mesh, List<Quaternion> turns, int upAxis)
         {
+            ClearHull(item);
+            // A tree or pile is round and narrows toward the top, so a box around it is
+            // mostly empty air at its corners. It gets a convex hull that wraps the pieces,
+            // and its own box shrinks to a core inside the base.
+            if (turns != null && mesh != null && centers.Count > 1)
+            {
+                Bounds core;
+                Mesh hull = HullMesh(item, centers, mesh, turns, upAxis, out core);
+                FitBox(item, core);
+                if (hull != null)
+                    AddHull(item, hull);
+                return;
+            }
+
             Bounds bundle = BundleBounds(centers, mesh, turns);
             bundle.Expand(0.04f);
+            FitBox(item, bundle);
+        }
+
+        private static void FitBox(ShipItem item, Bounds bundle)
+        {
             bool twinNeedsBox = item.itemRigidbodyC != null && HasMeshCollider(item.itemRigidbodyC.gameObject);
             Mesh box = null;
             if (HasMeshCollider(item.gameObject) || twinNeedsBox)
@@ -1297,6 +1591,194 @@ namespace Dizzy.FirewoodBundle
             FitOn(item.gameObject, bundle, box);
             if (item.itemRigidbodyC != null)
                 FitOn(item.itemRigidbodyC.gameObject, bundle, box);
+        }
+
+        // The hull is built from where the pieces reach: at each of up to HullBands
+        // heights, how far they go in HullSides directions around the up axis. Each band
+        // becomes a ring of points just outside them, and the collider wraps every ring.
+        // The core is a box well inside the bottom band, for the item's own collider.
+        private static Mesh HullMesh(ShipItem item, List<Vector3> centers, Mesh mesh, List<Quaternion> turns, int upAxis, out Bounds core)
+        {
+            Bounds stick = mesh.bounds;
+            int axisA = (upAxis + 1) % 3;
+            int axisB = (upAxis + 2) % 3;
+            var corners = new List<Vector3>(centers.Count * 8);
+            float low = float.MaxValue;
+            float high = float.MinValue;
+            for (int i = 0; i < centers.Count; i++)
+            {
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    Vector3 point = centers[i] + turns[i] * new Vector3(
+                        (corner & 1) == 0 ? stick.min.x : stick.max.x,
+                        (corner & 2) == 0 ? stick.min.y : stick.max.y,
+                        (corner & 4) == 0 ? stick.min.z : stick.max.z);
+                    corners.Add(point);
+                    low = Mathf.Min(low, point[upAxis]);
+                    high = Mathf.Max(high, point[upAxis]);
+                }
+            }
+
+            int bands = Mathf.Clamp(Mathf.CeilToInt((high - low) / Mathf.Max(stick.size[upAxis] * 2f, 0.01f)), 1, HullBands);
+            float bandHeight = Mathf.Max(high - low, 0.001f) / bands;
+            var reach = new float[bands, HullSides];
+            var filled = new bool[bands];
+            for (int band = 0; band < bands; band++)
+                for (int k = 0; k < HullSides; k++)
+                    reach[band, k] = float.MinValue;
+
+            for (int c = 0; c < corners.Count; c++)
+            {
+                Vector3 point = corners[c];
+                int band = Mathf.Min(bands - 1, (int)((point[upAxis] - low) / bandHeight));
+                filled[band] = true;
+                for (int k = 0; k < HullSides; k++)
+                {
+                    float angle = k * Mathf.PI * 2f / HullSides;
+                    float along = point[axisA] * Mathf.Cos(angle) + point[axisB] * Mathf.Sin(angle);
+                    if (along > reach[band, k])
+                        reach[band, k] = along;
+                }
+            }
+
+            var vertices = new List<Vector3>(bands * HullSides * 2);
+            var triangles = new List<int>(bands * HullSides * 6);
+            float turn = Mathf.PI * 2f / HullSides;
+            float sinTurn = Mathf.Sin(turn);
+            for (int band = 0; band < bands; band++)
+            {
+                if (!filled[band])
+                    continue;
+                int first = vertices.Count;
+                float bottom = low + band * bandHeight;
+                float top = band == bands - 1 ? high : bottom + bandHeight;
+                for (int level = 0; level < 2; level++)
+                {
+                    for (int k = 0; k < HullSides; k++)
+                    {
+                        // Where this direction's edge meets the next one's.
+                        int next = (k + 1) % HullSides;
+                        float a1 = k * turn;
+                        float a2 = next * turn;
+                        float s1 = reach[band, k] + HullMargin;
+                        float s2 = reach[band, next] + HullMargin;
+                        Vector3 point = Vector3.zero;
+                        point[axisA] = (s1 * Mathf.Sin(a2) - s2 * Mathf.Sin(a1)) / sinTurn;
+                        point[axisB] = (Mathf.Cos(a1) * s2 - Mathf.Cos(a2) * s1) / sinTurn;
+                        point[upAxis] = level == 0 ? bottom - HullMargin : top + HullMargin;
+                        vertices.Add(point);
+                    }
+                }
+
+                for (int k = 0; k < HullSides; k++)
+                {
+                    int next = (k + 1) % HullSides;
+                    triangles.Add(first + k);
+                    triangles.Add(first + HullSides + k);
+                    triangles.Add(first + next);
+                    triangles.Add(first + next);
+                    triangles.Add(first + HullSides + k);
+                    triangles.Add(first + HullSides + next);
+                }
+            }
+
+            // Box inside the bottom band: its reach both ways along each side axis.
+            int quarter = HullSides / 4;
+            float plusA = reach[0, 0];
+            float minusA = reach[0, quarter * 2];
+            float plusB = reach[0, quarter];
+            float minusB = reach[0, quarter * 3];
+            Vector3 middle = Vector3.zero;
+            Vector3 size = Vector3.zero;
+            middle[axisA] = (plusA - minusA) * 0.5f;
+            middle[axisB] = (plusB - minusB) * 0.5f;
+            size[axisA] = Mathf.Max(0.05f, (plusA + minusA) * CoreShare);
+            size[axisB] = Mathf.Max(0.05f, (plusB + minusB) * CoreShare);
+            // No higher than half the heap: a cone's sides close in toward the top.
+            float coreHeight = Mathf.Min(bandHeight, (high - low) * 0.5f);
+            middle[upAxis] = low + coreHeight * 0.5f;
+            size[upAxis] = coreHeight;
+            core = new Bounds(middle, size);
+
+            int id = item.GetInstanceID();
+            Mesh previous;
+            if (HullMeshes.TryGetValue(id, out previous) && previous != null)
+                Object.Destroy(previous);
+            HullMeshes.Remove(id);
+            if (vertices.Count < 4)
+                return null;
+
+            var hull = new Mesh();
+            hull.name = HullName;
+            hull.SetVertices(vertices);
+            hull.SetTriangles(triangles, 0);
+            hull.RecalculateBounds();
+            HullMeshes[id] = hull;
+            return hull;
+        }
+
+        // The hull is an item subcollider: looking at it looks at the item. Its twin on
+        // the physics body joins the body's subcolliders, so it turns into a trigger while
+        // the stack is held like the game's own. A body that has not started yet copies
+        // the hull itself when it does.
+        private static void AddHull(ShipItem item, Mesh hull)
+        {
+            Collider rootCollider = item.GetComponent<Collider>();
+            var shape = new GameObject(HullName);
+            shape.tag = "ItemSubcollider";
+            shape.layer = item.gameObject.layer;
+            shape.transform.SetParent(item.transform, false);
+            MeshCollider collider = shape.AddComponent<MeshCollider>();
+            collider.convex = true;
+            collider.sharedMesh = hull;
+            collider.isTrigger = rootCollider != null && rootCollider.isTrigger;
+
+            ItemRigidbody body = item.itemRigidbodyC;
+            if (body == null || BodyField == null || BodyField.GetValue(body) == null || SubcollidersField == null)
+                return;
+            var subcolliders = SubcollidersField.GetValue(body) as List<Collider>;
+            if (subcolliders == null)
+            {
+                subcolliders = new List<Collider>();
+                SubcollidersField.SetValue(body, subcolliders);
+            }
+
+            var twin = new GameObject(HullName);
+            twin.layer = 2;
+            twin.transform.SetParent(body.transform, false);
+            MeshCollider twinCollider = twin.AddComponent<MeshCollider>();
+            twinCollider.convex = true;
+            twinCollider.sharedMesh = hull;
+            twinCollider.isTrigger = item.held != null;
+            subcolliders.Add(twinCollider);
+        }
+
+        private static void ClearHull(ShipItem item)
+        {
+            if (item == null)
+                return;
+            DestroyHull(item.transform, null);
+            ItemRigidbody body = item.itemRigidbodyC;
+            if (body == null)
+                return;
+            var subcolliders = SubcollidersField != null ? SubcollidersField.GetValue(body) as List<Collider> : null;
+            DestroyHull(body.transform, subcolliders);
+        }
+
+        // The body's own copy of the hull is named "<HullName>(Clone)".
+        private static void DestroyHull(Transform parent, List<Collider> subcolliders)
+        {
+            for (int i = parent.childCount - 1; i >= 0; i--)
+            {
+                Transform child = parent.GetChild(i);
+                if (!child.name.StartsWith(HullName, System.StringComparison.Ordinal))
+                    continue;
+                // The body sets every listed collider's trigger while held, so a destroyed
+                // one must leave the list first.
+                if (subcolliders != null)
+                    subcolliders.Remove(child.GetComponent<Collider>());
+                Object.Destroy(child.gameObject);
+            }
         }
 
         private static Bounds BundleBounds(List<Vector3> centers, Mesh mesh, List<Quaternion> turns = null)

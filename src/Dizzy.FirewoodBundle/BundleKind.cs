@@ -61,7 +61,7 @@ namespace Dizzy.FirewoodBundle
             new string[0],
             new Color[0],
             TieStyle.None,
-            0.85f,
+            0.75f,
             false);
 
         internal readonly string BundleName;

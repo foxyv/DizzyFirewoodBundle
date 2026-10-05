@@ -75,12 +75,14 @@ namespace Dizzy.FirewoodBundle
         }
     }
 
+    // The stove takes any food that touches its fire, so a stack only has to come near.
+    // It stays out quietly; this is not something the player tried to do.
     [HarmonyPatch(typeof(CookableFood), nameof(CookableFood.InsertIntoCookTrigger))]
     internal static class SausageCookPatch
     {
         private static bool Prefix(CookableFood __instance)
         {
-            return SausageGuard.Allow(__instance);
+            return !SausageStacks.IsStack(__instance);
         }
     }
 

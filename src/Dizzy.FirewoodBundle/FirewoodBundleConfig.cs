@@ -69,7 +69,7 @@ namespace Dizzy.FirewoodBundle
 
         internal static float SausageSpacing
         {
-            get { return SausageSpacingAmount != null ? SausageSpacingAmount.Value : 0.85f; }
+            get { return SausageSpacingAmount != null ? SausageSpacingAmount.Value : 0.75f; }
         }
 
         internal static float PileSteepness
@@ -174,22 +174,22 @@ namespace Dizzy.FirewoodBundle
                 "Sausages",
                 "Width Key",
                 KeyCode.RightBracket,
-                "Hold or look at a sausage stack and press this key to change its shape: Auto, then 1 to 5 wide, then Pile. Width 1 stacks them into a single tower. Pile heaps them in loose crossing layers that grow into a pyramid as sausages are added.");
+                "Hold or look at a sausage stack and press this key to change its shape: Auto, then 1 to 5 wide, then Tree, then Pile. Width 1 stacks them into a single tower. Tree lays them in crossing layers that narrow toward the top. Pile drops them onto each other in a loose heap.");
 
             SausageSpacingAmount = config.Bind(
                 "Sausages",
                 "Spacing",
-                0.85f,
+                0.75f,
                 new ConfigDescription(
-                    "How far apart sausages sit in a stack, as a share of one sausage's size. 1 spaces them by their full size. Lower packs them tighter. A stack picks up the new spacing when it changes: on load, when a sausage is added or taken, or when its width changes.",
-                    new AcceptableValueRange<float>(0.5f, 1.5f)));
+                    "How far apart sausages sit in a stack, as a share of one sausage's size. 1 spaces them by their full size. Lower packs them tighter; in a Pile it also lets them settle closer together. A stack picks up the new spacing when it changes: on load, when a sausage is added or taken, or when its shape changes.",
+                    new AcceptableValueRange<float>(0.25f, 1.5f)));
 
             PileSteepnessAmount = config.Bind(
                 "Sausages",
                 "Pile Steepness",
                 1f,
                 new ConfigDescription(
-                    "How steep a sausage pile grows. 1 makes a pyramid about as high as it is wide. 0.5 is a fairly flat pile, 2 a very steep one. A pile picks up the change when it is rebuilt: on load, when a sausage is added or taken, or when its width changes.",
+                    "How steep a sausage Tree or Pile grows. 1 is the usual shape. 0.5 is fairly flat, 2 very steep. A stack picks up the change when it is rebuilt: on load, when a sausage is added or taken, or when its shape changes.",
                     new AcceptableValueRange<float>(0.25f, 3f)));
 
             HooksEnabled = config.Bind(

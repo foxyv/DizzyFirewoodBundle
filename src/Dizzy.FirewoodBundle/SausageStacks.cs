@@ -22,9 +22,12 @@ namespace Dizzy.FirewoodBundle
         internal const string TakeOneFirst = "Take a sausage off the stack first";
 
         // Auto keeps the stack as close to square as it can. 1 is a single-file tower.
-        // After the widths comes Pile, a loose heap that grows as sausages are added.
+        // After the widths comes Tree, layers that cross and narrow toward the top, then
+        // Pile, sausages dropped onto each other in a heap. Tree keeps the value Pile had
+        // before Pile was rebuilt, so a saved stack keeps its look.
         internal const int MaxWidth = 5;
-        internal const int PileWidth = MaxWidth + 1;
+        internal const int TreeWidth = MaxWidth + 1;
+        internal const int PileWidth = MaxWidth + 2;
         private const int WidthStride = 1000;
 
         private static float _notifiedAt = -10f;
@@ -202,7 +205,7 @@ namespace Dizzy.FirewoodBundle
         }
 
         // ] while holding or looking at a sausage stack makes it one column wider,
-        // up to MaxWidth, then a pile, then back to Auto.
+        // up to MaxWidth, then a tree, then a pile, then back to Auto.
         internal static void CycleLookedAtWidth()
         {
             if (!BundleKind.Sausage.IsEnabled)
@@ -241,6 +244,8 @@ namespace Dizzy.FirewoodBundle
         {
             if (width <= 0)
                 return "Auto";
+            if (width == TreeWidth)
+                return "Tree";
             return width >= PileWidth ? "Pile" : width.ToString();
         }
     }
