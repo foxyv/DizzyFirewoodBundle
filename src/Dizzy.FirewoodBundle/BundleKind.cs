@@ -64,6 +64,20 @@ namespace Dizzy.FirewoodBundle
             0.75f,
             false);
 
+        // Sausages tied by strings to a central string under a lamp hook. Made from a
+        // sausage and a hook, not from two sausages, so it never mixes with a stack.
+        internal static readonly BundleKind HangingSausage = new BundleKind(
+            "hanging sausages",
+            "sausages",
+            "Sausage",
+            "Bunch",
+            "",
+            new string[0],
+            new Color[0],
+            TieStyle.None,
+            1f,
+            false);
+
         internal readonly string BundleName;
         internal readonly string Plural;
         internal readonly string Single;
@@ -99,6 +113,13 @@ namespace Dizzy.FirewoodBundle
             CountInAmount = countInAmount;
         }
 
+        // Gap between pieces as a share of one piece's thickness. Candles take theirs
+        // from the config.
+        internal float Spacing
+        {
+            get { return this == Candle ? FirewoodBundleConfig.CandleSpacing : Pitch; }
+        }
+
         internal bool Ribbon
         {
             get { return Tie == TieStyle.Ribbon; }
@@ -112,6 +133,8 @@ namespace Dizzy.FirewoodBundle
                     return FirewoodBundleConfig.IsEnabled;
                 if (this == Candle)
                     return FirewoodBundleConfig.CandlesAreEnabled;
+                if (this == HangingSausage)
+                    return FirewoodBundleConfig.HangingAreEnabled;
                 return FirewoodBundleConfig.SausagesAreEnabled;
             }
         }
@@ -123,7 +146,9 @@ namespace Dizzy.FirewoodBundle
             {
                 int limit = this == Firewood
                     ? FirewoodBundleConfig.PieceLimit
-                    : this == Candle ? FirewoodBundleConfig.CandleLimit : FirewoodBundleConfig.SausageLimit;
+                    : this == Candle
+                        ? FirewoodBundleConfig.CandleLimit
+                        : this == HangingSausage ? FirewoodBundleConfig.HangingLimit : FirewoodBundleConfig.SausageLimit;
                 return Mathf.Clamp(limit, 2, FirewoodPieces.MaxCount);
             }
         }
@@ -153,7 +178,7 @@ namespace Dizzy.FirewoodBundle
 
         internal static bool AnyEnabled
         {
-            get { return Firewood.IsEnabled || Candle.IsEnabled || Sausage.IsEnabled; }
+            get { return Firewood.IsEnabled || Candle.IsEnabled || Sausage.IsEnabled || HangingSausage.IsEnabled; }
         }
 
         internal static BundleKind Of(ShipItem ship)
@@ -167,7 +192,7 @@ namespace Dizzy.FirewoodBundle
             if (fuel != null && !fuel.oilBottle)
                 return Candle;
             if (ship is ShipItemFood && ship.name == SausageStacks.ItemName)
-                return Sausage;
+                return SausageStacks.IsHanging(ship) ? HangingSausage : Sausage;
             return null;
         }
     }

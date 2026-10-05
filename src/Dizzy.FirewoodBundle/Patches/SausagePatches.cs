@@ -67,7 +67,7 @@ namespace Dizzy.FirewoodBundle
         {
             if (!SausageStacks.IsStack(item) || ___controlsText == null)
                 return;
-            ___controlsText.text = SausageStacks.WidthPrompt(FirewoodPieces.AsShip(item));
+            ___controlsText.text = SausageStacks.IsHanging(item) ? "" : SausageStacks.WidthPrompt(FirewoodPieces.AsShip(item));
             if (___mouseRIcon != null)
                 ___mouseRIcon.enabled = false;
             if (___textRIcon != null)
@@ -110,6 +110,53 @@ namespace Dizzy.FirewoodBundle
         private static bool Prefix(FoodState food)
         {
             return SausageGuard.Allow(food);
+        }
+    }
+
+    // A held sausage, or a held hanging bundle, can aim at an empty lamp hook.
+    [HarmonyPatch(typeof(ShipItemFood), nameof(ShipItemFood.AllowOnItemClick))]
+    internal static class SausageHookAimPatch
+    {
+        private static void Postfix(ShipItemFood __instance, GoPointerButton lookedAtButton, ref bool __result)
+        {
+            if (__result || lookedAtButton == null || !BundleKind.HangingSausage.IsEnabled)
+                return;
+            ShipItemLampHook lamp = lookedAtButton.GetComponent<ShipItemLampHook>();
+            if (lamp == null || HookLinePieces.LampIsOccupied(lamp))
+                return;
+            BundleKind kind = FirewoodPieces.KindOf(__instance);
+            if (kind == BundleKind.HangingSausage || (kind == BundleKind.Sausage && FirewoodPieces.CountOf(__instance) <= 1))
+                __result = true;
+        }
+    }
+
+    // Clicking an empty lamp hook with a sausage hangs it there as a hanging bundle of
+    // one. The game hangs anything with a HangableItem, so the sausage gets one and the
+    // hook does the rest. A sausage that would spoil, or is part eaten, is refused.
+    [HarmonyPatch(typeof(ShipItemLampHook), nameof(ShipItemLampHook.OnItemClick))]
+    internal static class SausageHangPatch
+    {
+        private static bool Prefix(ShipItemLampHook __instance, PickupableItem heldItem, ref bool __result)
+        {
+            ShipItem held = FirewoodPieces.AsShip(heldItem);
+            if (!BundleKind.HangingSausage.IsEnabled || FirewoodPieces.KindOf(held) != BundleKind.Sausage)
+                return true;
+            if (FirewoodPieces.CountOf(held) > 1 || HookLinePieces.LampIsOccupied(__instance))
+                return true;
+
+            string refusal = !SausageStacks.IsPreserved(held)
+                ? SausageStacks.Unpreserved
+                : !SausageStacks.IsWhole(held) ? SausageStacks.Eaten : null;
+            if (refusal != null)
+            {
+                SausageStacks.Notify(refusal);
+                __result = false;
+                return false;
+            }
+
+            SausageStacks.MakeHanging(held);
+            FirewoodBundleBuilder.Apply(held);
+            return true;
         }
     }
 

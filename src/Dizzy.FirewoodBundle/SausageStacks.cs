@@ -28,6 +28,9 @@ namespace Dizzy.FirewoodBundle
         internal const int MaxWidth = 5;
         internal const int TreeWidth = MaxWidth + 1;
         internal const int PileWidth = MaxWidth + 2;
+        // Not a stack shape: marks a hanging bundle, which keeps its state even with one
+        // sausage left, since it is still tied to its hook.
+        internal const int HangWidth = 8;
         private const int WidthStride = 1000;
 
         private static float _notifiedAt = -10f;
@@ -49,7 +52,7 @@ namespace Dizzy.FirewoodBundle
             if (item == null)
                 return;
             StackState state = item.GetComponent<StackState>();
-            if (count <= 1)
+            if (count <= 1 && (state == null || state.Width != HangWidth))
             {
                 if (state != null)
                 {
@@ -61,7 +64,33 @@ namespace Dizzy.FirewoodBundle
 
             if (state == null)
                 state = item.gameObject.AddComponent<StackState>();
-            state.Count = count;
+            state.Count = Mathf.Max(1, count);
+        }
+
+        internal static bool IsHanging(Component component)
+        {
+            StackState state = component != null ? component.GetComponent<StackState>() : null;
+            return state != null && state.Width == HangWidth;
+        }
+
+        // A single sausage becomes a hanging bundle of one.
+        internal static void MakeHanging(ShipItem item)
+        {
+            StackState state = item.GetComponent<StackState>();
+            if (state == null)
+                state = item.gameObject.AddComponent<StackState>();
+            state.Count = 1;
+            state.Width = HangWidth;
+        }
+
+        // The last sausage off a hanging bundle is a plain sausage again.
+        internal static void Unhang(ShipItem item)
+        {
+            StackState state = item != null ? item.GetComponent<StackState>() : null;
+            if (state == null)
+                return;
+            state.Count = 1;
+            state.Width = 0;
         }
 
         // The stack is saved in the food's spare extra value: count + width * 1000.
@@ -74,16 +103,24 @@ namespace Dizzy.FirewoodBundle
         {
             int value = Mathf.RoundToInt(saved);
             int count = value % WidthStride;
+            int width = value / WidthStride;
+            if (width == HangWidth && count >= 1)
+            {
+                MakeHanging(item);
+                WriteCount(item, count);
+                return;
+            }
             if (count <= 1)
                 return;
             WriteCount(item, count);
-            item.GetComponent<StackState>().Width = Mathf.Clamp(value / WidthStride, 0, PileWidth);
+            item.GetComponent<StackState>().Width = Mathf.Clamp(width, 0, PileWidth);
         }
 
         internal static bool IsStack(Component component)
         {
             ShipItem item = FirewoodPieces.AsShip(component);
-            return FirewoodPieces.KindOf(item) == BundleKind.Sausage && CountOf(item) > 1;
+            BundleKind kind = FirewoodPieces.KindOf(item);
+            return (kind == BundleKind.Sausage && CountOf(item) > 1) || kind == BundleKind.HangingSausage;
         }
 
         // Smoked or dried food barely spoils. Rotten food is past saving.
@@ -143,7 +180,7 @@ namespace Dizzy.FirewoodBundle
         // Why these two cannot stack, or null when they can.
         internal static string Rejection(ShipItem held, ShipItem target)
         {
-            if (FirewoodPieces.KindOf(held) != BundleKind.Sausage || FirewoodPieces.KindOf(target) != BundleKind.Sausage)
+            if (!IsSausage(held) || !IsSausage(target))
                 return null;
             if (!IsPreserved(held) || !IsPreserved(target))
                 return Unpreserved;
@@ -152,6 +189,12 @@ namespace Dizzy.FirewoodBundle
             if (KindWord(held) != KindWord(target))
                 return DifferentKind;
             return null;
+        }
+
+        internal static bool IsSausage(ShipItem item)
+        {
+            BundleKind kind = FirewoodPieces.KindOf(item);
+            return kind == BundleKind.Sausage || kind == BundleKind.HangingSausage;
         }
 
         // The stack takes the worst of both: the most spoiled, the least dried, smoked
@@ -224,7 +267,7 @@ namespace Dizzy.FirewoodBundle
                 ShipItem stack = FirewoodPieces.AsShip(pointer.GetHeldItem());
                 if (stack == null)
                     stack = pointer.GetPointedAtItem();
-                if (!IsStack(stack))
+                if (!IsStack(stack) || IsHanging(stack))
                     continue;
 
                 StackState state = stack.GetComponent<StackState>();

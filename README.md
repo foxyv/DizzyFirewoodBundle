@@ -30,6 +30,13 @@ A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepI
   - **Pile:** a loose heap. New sausages land on top without moving the others.
 - Press **G** on a loose sausage in an open crate to pick up a stack.
 
+### Hanging sausages
+- Click an empty lamp hook with a smoked or dried sausage to hang it. Sausages that would spoil can't be hung.
+- Right-click the hanging bundle with a sausage or a stack to add more. A stack moves as many as fit. Kinds don't mix.
+- Sausages hang in bunches around a central string, each on its own short white string. When a bunch is full, a new one starts lower down.
+- Right-click the bundle to take one sausage off. Taking the last one frees the hook.
+- Left-click lifts the whole bundle, which can be hung on another empty lamp hook.
+
 ### Fishing hooks
 - Hold a fishing hook and right-click another hook to string them on a line.
 - A line can hang from a lamp hook. An empty fishing rod takes one hook from a line.
@@ -56,11 +63,19 @@ Settings are in `BepInEx\config\com.dizzy.sailwind.firewoodbundle.cfg`. The file
 | General | Tie Color Key | Backslash | Key that changes a bundle's tie color. |
 | Candles | Enabled | true | Turns candle bundles on or off. |
 | Candles | MaxCandles | 24 | Most candles in a bundle, up to 999. |
+| Candles | Spacing | 0.9 | Gap between candles in a bundle. |
 | Sausages | Enabled | true | Turns sausage stacks on or off. |
 | Sausages | MaxSausages | 20 | Most sausages in a stack, up to 999. |
 | Sausages | Width Key | RightBracket | Key that changes a stack's shape. |
 | Sausages | Spacing | 0.75 | How tightly sausages pack. Lower is tighter. |
 | Sausages | Pile Steepness | 1 | How steep a Tree or Pile grows. 0.5 is flat, 2 is steep. |
+| Hanging Sausages | Enabled | true | Turns hanging sausages on or off. |
+| Hanging Sausages | MaxSausages | 48 | Most sausages in a hanging bundle, up to 999. |
+| Hanging Sausages | Bunch Size | 12 | Sausages around the string in one bunch. |
+| Hanging Sausages | Bunch Radius | 0.75 | How far sausages hang from the central string. |
+| Hanging Sausages | Bunch Drop | 2 | How far below the last bunch a new one starts. |
+| Hanging Sausages | String Length | 1 | Length of each sausage's string. |
+| Hanging Sausages | Flare | 0.75 | How far sausages lean out. 1 just clears the bunch below. 0 hangs straight down. |
 | Hooks | Enabled | true | Turns hook lines on or off. |
 | Hooks | MaxHooks | 20 | Most hooks on one line. |
 | Hooks | Hook Messiness | 1 | How far each hook is shifted and tilted off a neat line. |
@@ -91,7 +106,7 @@ dotnet build src\Dizzy.FirewoodBundle\Dizzy.FirewoodBundle.csproj -c Release -p:
 To package a release zip into `dist\`, run:
 
 ```powershell
-.\scripts\package-release.ps1 -Version 0.5.0
+.\scripts\package-release.ps1 -Version 0.6.0
 ```
 
 ## License

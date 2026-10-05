@@ -778,6 +778,13 @@ namespace Dizzy.FirewoodBundle
         {
             if (FirewoodPieces.IsPiece(__instance))
                 FirewoodPieces.NotePickedUp();
+            // Lifting a hanging bundle takes it off its hook, ready to hang somewhere else.
+            if (FirewoodPieces.KindOf(__instance) == BundleKind.HangingSausage)
+            {
+                HangableItem hang = __instance.GetComponent<HangableItem>();
+                if (hang != null && hang.IsHanging())
+                    hang.DisconnectJoint();
+            }
             if (HookLinePieces.IsHook(__instance))
             {
                 HookLinePieces.NotePickedUp();
@@ -800,7 +807,7 @@ namespace Dizzy.FirewoodBundle
         private static void Postfix(ShipItem __instance)
         {
             int count = FirewoodPieces.CountOf(__instance);
-            if (count > 1)
+            if (count > 1 || FirewoodPieces.KindOf(__instance) == BundleKind.HangingSausage)
             {
                 __instance.lookText = FirewoodPieces.LookText(__instance, count);
                 // Food keeps the game's own description, e.g. "smoked sausage".
@@ -937,12 +944,20 @@ namespace Dizzy.FirewoodBundle
                 int combined = heldCount + count;
                 string refusal = FirewoodPieces.Refusal(held, item);
                 string action = "\nR Create " + kind.Group;
+                // Onto a hanging bundle the full and fill hints are about the bunch.
+                if (FirewoodPieces.KindOf(item) == BundleKind.HangingSausage)
+                {
+                    kind = BundleKind.HangingSausage;
+                    action = "\nR Add " + kind.Single;
+                }
                 if (refusal != null)
                     action = "\nR " + refusal;
-                else if (!FirewoodPieces.Fits(held, combined))
+                else if (!FirewoodPieces.Fits(item, combined))
                     action = FirewoodPieces.RoomIn(held, item) > 0
                         ? "\nR Fill " + kind.Group
                         : "\nR " + kind.Group + " Full";
+                else if (kind == BundleKind.HangingSausage)
+                    action = "\nR Add " + kind.Single;
                 else if (heldCount > 1 && count <= 1)
                     action = "\nR Add " + kind.Single;
                 else if (count > 1)
@@ -960,7 +975,7 @@ namespace Dizzy.FirewoodBundle
                 return;
             }
 
-            if (count > 1 && held == null)
+            if ((count > 1 || FirewoodPieces.KindOf(item) == BundleKind.HangingSausage) && held == null)
             {
                 string remove = "Remove " + FirewoodPieces.KindOf(item).Single;
                 ___controlsText.text = item.nailed ? "\n" + remove : "pick up\n" + remove;
@@ -1050,7 +1065,7 @@ namespace Dizzy.FirewoodBundle
                 ShipItem item = __instance.GetComponent<ShipItem>();
                 if (data != null && FirewoodPieces.KindOf(item) == BundleKind.Sausage)
                     SausageStacks.Decode(item, data.extraValue4);
-                if (FirewoodPieces.CountOf(item) > 1)
+                if (FirewoodPieces.CountOf(item) > 1 || FirewoodPieces.KindOf(item) == BundleKind.HangingSausage)
                     FirewoodBundleBuilder.Apply(item);
                 if (HookLinePieces.IsLine(item))
                     HookLineBuilder.Apply(item);
