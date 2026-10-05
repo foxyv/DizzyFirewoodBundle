@@ -10,6 +10,11 @@ namespace Dizzy.FirewoodBundle
         internal static ConfigEntry<KeyCode> ColorKey;
         internal static ConfigEntry<bool> CandlesEnabled;
         internal static ConfigEntry<int> MaxCandles;
+        internal static ConfigEntry<bool> SausagesEnabled;
+        internal static ConfigEntry<int> MaxSausages;
+        internal static ConfigEntry<KeyCode> WidthKey;
+        internal static ConfigEntry<float> SausageSpacingAmount;
+        internal static ConfigEntry<float> PileSteepnessAmount;
         internal static ConfigEntry<bool> HooksEnabled;
         internal static ConfigEntry<int> MaxHooks;
         internal static ConfigEntry<float> HookMessiness;
@@ -34,7 +39,47 @@ namespace Dizzy.FirewoodBundle
 
         internal static string ColorKeyLabel
         {
-            get { return ColorKeyCode == KeyCode.Backslash ? "\\" : ColorKeyCode.ToString(); }
+            get { return KeyLabel(ColorKeyCode); }
+        }
+
+        internal static string KeyLabel(KeyCode key)
+        {
+            switch (key)
+            {
+                case KeyCode.Backslash:
+                    return "\\";
+                case KeyCode.LeftBracket:
+                    return "[";
+                case KeyCode.RightBracket:
+                    return "]";
+                default:
+                    return key.ToString();
+            }
+        }
+
+        internal static bool SausagesAreEnabled
+        {
+            get { return SausagesEnabled == null || SausagesEnabled.Value; }
+        }
+
+        internal static int SausageLimit
+        {
+            get { return MaxSausages != null ? MaxSausages.Value : 20; }
+        }
+
+        internal static float SausageSpacing
+        {
+            get { return SausageSpacingAmount != null ? SausageSpacingAmount.Value : 0.75f; }
+        }
+
+        internal static float PileSteepness
+        {
+            get { return PileSteepnessAmount != null ? Mathf.Max(0.25f, PileSteepnessAmount.Value) : 1f; }
+        }
+
+        internal static KeyCode WidthKeyCode
+        {
+            get { return WidthKey != null ? WidthKey.Value : KeyCode.RightBracket; }
         }
 
         internal static bool CandlesAreEnabled
@@ -108,8 +153,44 @@ namespace Dizzy.FirewoodBundle
                 "MaxCandles",
                 24,
                 new ConfigDescription(
-                    "Most candles a bundle can hold. They pack in a square grid, as close to square as the count allows.",
-                    new AcceptableValueRange<int>(2, 100)));
+                    "Most candles a bundle can hold, up to 999. They pack in a square grid, as close to square as the count allows.",
+                    new AcceptableValueRange<int>(2, FirewoodPieces.MaxCount)));
+
+            SausagesEnabled = config.Bind(
+                "Sausages",
+                "Enabled",
+                true,
+                "Hold a smoked or dried sausage and right-click another of the same kind to stack them. Only sausages that will not spoil stack. Take one off the stack to eat, cook, salt or slice it. Look at a loose sausage in an open crate and press G to pick up a stack.");
+
+            MaxSausages = config.Bind(
+                "Sausages",
+                "MaxSausages",
+                20,
+                new ConfigDescription(
+                    "Most sausages one stack can hold, up to 999.",
+                    new AcceptableValueRange<int>(2, FirewoodPieces.MaxCount)));
+
+            WidthKey = config.Bind(
+                "Sausages",
+                "Width Key",
+                KeyCode.RightBracket,
+                "Hold or look at a sausage stack and press this key to change its shape: Auto, then 1 to 5 wide, then Tree, then Pile. Width 1 stacks them into a single tower. Tree lays them in crossing layers that narrow toward the top. Pile drops them onto each other in a loose heap.");
+
+            SausageSpacingAmount = config.Bind(
+                "Sausages",
+                "Spacing",
+                0.75f,
+                new ConfigDescription(
+                    "How far apart sausages sit in a stack, as a share of one sausage's size. 1 spaces them by their full size. Lower packs them tighter; in a Pile it also lets them settle closer together. A stack picks up the new spacing when it changes: on load, when a sausage is added or taken, or when its shape changes.",
+                    new AcceptableValueRange<float>(0.25f, 1.5f)));
+
+            PileSteepnessAmount = config.Bind(
+                "Sausages",
+                "Pile Steepness",
+                1f,
+                new ConfigDescription(
+                    "How steep a sausage Tree or Pile grows. 1 is the usual shape. 0.5 is fairly flat, 2 very steep. A stack picks up the change when it is rebuilt: on load, when a sausage is added or taken, or when its shape changes.",
+                    new AcceptableValueRange<float>(0.25f, 3f)));
 
             HooksEnabled = config.Bind(
                 "Hooks",

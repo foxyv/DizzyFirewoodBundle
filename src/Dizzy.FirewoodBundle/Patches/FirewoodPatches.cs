@@ -525,6 +525,13 @@ namespace Dizzy.FirewoodBundle
                     return false;
                 if (FirewoodPieces.TrySplit(__instance))
                     return false;
+                // A right-click with a stack in hand that did not stack or fill anything
+                // is an attempt to eat it.
+                if (__instance.held != null && SausageStacks.IsStack(__instance))
+                {
+                    SausageStacks.Notify(SausageStacks.TakeOneFirst);
+                    return false;
+                }
             }
 
             if (FirewoodBundleConfig.HooksAreEnabled)
@@ -796,8 +803,9 @@ namespace Dizzy.FirewoodBundle
             if (count > 1)
             {
                 __instance.lookText = FirewoodPieces.LookText(__instance, count);
+                // Food keeps the game's own description, e.g. "smoked sausage".
                 ShipItem prefab = FirewoodPieces.PrefabOf(__instance);
-                if (prefab != null)
+                if (prefab != null && !(__instance is ShipItemFood))
                     __instance.description = prefab.description;
             }
 
@@ -831,8 +839,11 @@ namespace Dizzy.FirewoodBundle
             {
                 item.lookText = FirewoodPieces.LookText(item, count);
                 ShipItem prefab = FirewoodPieces.PrefabOf(item);
-                if (prefab != null)
+                if (prefab != null && !(item is ShipItemFood))
                     item.description = prefab.description;
+                // The label already says what a sausage stack is, so it has no description.
+                if (SausageStacks.IsStack(item))
+                    item.description = "";
                 if (___extraText != null)
                     ___extraText.text = item.lookText;
                 if (___hintText != null)
@@ -919,17 +930,23 @@ namespace Dizzy.FirewoodBundle
                 OfferCrateGather(___controlsText, item, held);
                 return;
             }
-            if (FirewoodPieces.CanTarget(held, item))
+            if (FirewoodPieces.CanTargetKind(held, item))
             {
+                BundleKind kind = FirewoodPieces.KindOf(held);
                 int heldCount = FirewoodPieces.CountOf(held);
                 int combined = heldCount + count;
-                string action = "\nR Create Bundle";
-                if (!FirewoodPieces.Fits(held, combined))
-                    action = "\nR Bundle Full";
+                string refusal = FirewoodPieces.Refusal(held, item);
+                string action = "\nR Create " + kind.Group;
+                if (refusal != null)
+                    action = "\nR " + refusal;
+                else if (!FirewoodPieces.Fits(held, combined))
+                    action = FirewoodPieces.RoomIn(held, item) > 0
+                        ? "\nR Fill " + kind.Group
+                        : "\nR " + kind.Group + " Full";
                 else if (heldCount > 1 && count <= 1)
-                    action = "\nR Add " + FirewoodPieces.KindOf(held).Single;
+                    action = "\nR Add " + kind.Single;
                 else if (count > 1)
-                    action = "\nR Add to Bundle";
+                    action = "\nR Add to " + kind.Group;
                 ___controlsText.text = action;
                 if (___textLicon != null)
                     ___textLicon.gameObject.SetActive(false);
@@ -1026,11 +1043,13 @@ namespace Dizzy.FirewoodBundle
     [HarmonyPatch(typeof(SaveablePrefab), nameof(SaveablePrefab.Load))]
     internal static class FirewoodLoadPatch
     {
-        private static void Postfix(SaveablePrefab __instance)
+        private static void Postfix(SaveablePrefab __instance, SavePrefabData data)
         {
             try
             {
                 ShipItem item = __instance.GetComponent<ShipItem>();
+                if (data != null && FirewoodPieces.KindOf(item) == BundleKind.Sausage)
+                    SausageStacks.Decode(item, data.extraValue4);
                 if (FirewoodPieces.CountOf(item) > 1)
                     FirewoodBundleBuilder.Apply(item);
                 if (HookLinePieces.IsLine(item))
@@ -1136,7 +1155,7 @@ namespace Dizzy.FirewoodBundle
                 return;
             ShipItem heldItem = FirewoodPieces.AsShip(held);
             ShipItem target = FirewoodPieces.AsShip(button);
-            if (!FirewoodPieces.CanTarget(heldItem, target))
+            if (!FirewoodPieces.CanTargetKind(heldItem, target))
                 return;
             __result = true;
         }

@@ -11,7 +11,7 @@ namespace Dizzy.FirewoodBundle
     {
         public const string PluginGuid = "com.dizzy.sailwind.firewoodbundle";
         public const string PluginName = "Dizzy Firewood Bundle";
-        public const string PluginVersion = "0.4.0";
+        public const string PluginVersion = "0.5.0";
 
         internal static ManualLogSource Log;
         internal static Plugin Instance;
@@ -41,6 +41,10 @@ namespace Dizzy.FirewoodBundle
                 + ", MaxPieces=" + FirewoodBundleConfig.MaxPieces.Value
                 + ", Candles=" + FirewoodBundleConfig.CandlesEnabled.Value
                 + ", MaxCandles=" + FirewoodBundleConfig.MaxCandles.Value
+                + ", Sausages=" + FirewoodBundleConfig.SausagesEnabled.Value
+                + ", MaxSausages=" + FirewoodBundleConfig.MaxSausages.Value
+                + ", Sausage Spacing=" + FirewoodBundleConfig.SausageSpacingAmount.Value
+                + ", Pile Steepness=" + FirewoodBundleConfig.PileSteepnessAmount.Value
                 + ", Hooks=" + FirewoodBundleConfig.HooksEnabled.Value
                 + ", MaxHooks=" + FirewoodBundleConfig.MaxHooks.Value
                 + ", Hook Messiness=" + FirewoodBundleConfig.HookMessiness.Value
@@ -56,6 +60,7 @@ namespace Dizzy.FirewoodBundle
             HookLinePieces.GatherLookedAtHook();
             FirewoodPieces.GatherLookedAtPiece();
             FirewoodPieces.CycleLookedAtColor();
+            SausageStacks.CycleLookedAtWidth();
         }
 
         private void OnDestroy()
