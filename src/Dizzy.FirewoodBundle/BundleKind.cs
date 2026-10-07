@@ -133,6 +133,31 @@ namespace Dizzy.FirewoodBundle
             1f,
             false);
 
+        // A loose orange. Two dried oranges make a bag, the same as apples.
+        internal static readonly BundleKind Orange = new BundleKind(
+            "orange",
+            "oranges",
+            "Orange",
+            "Bag",
+            "",
+            new string[0],
+            new Color[0],
+            TieStyle.None,
+            1f,
+            false);
+
+        internal static readonly BundleKind OrangeBag = new BundleKind(
+            "orange bag",
+            "oranges",
+            "Orange",
+            "Bag",
+            "Net",
+            StartAt("Black", DyeNames),
+            StartAt(System.Array.IndexOf(DyeNames, "Black"), Dyes),
+            TieStyle.None,
+            1f,
+            false);
+
         internal readonly string BundleName;
         internal readonly string Plural;
         internal readonly string Single;
@@ -194,6 +219,8 @@ namespace Dizzy.FirewoodBundle
                     return FirewoodBundleConfig.BananasAreEnabled;
                 if (this == Apple || this == AppleBag)
                     return FirewoodBundleConfig.ApplesAreEnabled;
+                if (this == Orange || this == OrangeBag)
+                    return FirewoodBundleConfig.OrangesAreEnabled;
                 return FirewoodBundleConfig.SausagesAreEnabled;
             }
         }
@@ -211,7 +238,9 @@ namespace Dizzy.FirewoodBundle
                             ? FirewoodBundleConfig.HangingLimit
                             : this == HangingBanana || this == Banana
                                 ? FirewoodBundleConfig.BananaLimit
-                                : this == AppleBag || this == Apple ? FirewoodBundleConfig.AppleLimit : FirewoodBundleConfig.SausageLimit;
+                                : this == AppleBag || this == Apple
+                                    ? FirewoodBundleConfig.AppleLimit
+                                    : this == OrangeBag || this == Orange ? FirewoodBundleConfig.OrangeLimit : FirewoodBundleConfig.SausageLimit;
                 return Mathf.Clamp(limit, 2, FirewoodPieces.MaxCount);
             }
         }
@@ -219,31 +248,37 @@ namespace Dizzy.FirewoodBundle
         // Hangs from a lamp hook and stays a bundle even with one piece left.
         internal bool Hangs
         {
-            get { return this == HangingSausage || this == HangingBanana || this == AppleBag; }
+            get { return this == HangingSausage || this == HangingBanana || this == AppleBag || this == OrangeBag; }
         }
 
         // Food whose count lives in a StackState rather than in amount.
         internal bool IsFood
         {
-            get { return this == Sausage || this == HangingSausage || this == Banana || this == HangingBanana || this == Apple || this == AppleBag; }
+            get { return this == Sausage || this == HangingSausage || this == Banana || this == HangingBanana || this == Apple || this == AppleBag || this == Orange || this == OrangeBag; }
         }
 
         // The loose piece a hanging kind is made of, and the other way round.
         internal BundleKind Loose
         {
-            get { return this == HangingSausage ? Sausage : this == HangingBanana ? Banana : this == AppleBag ? Apple : this; }
+            get { return this == HangingSausage ? Sausage : this == HangingBanana ? Banana : this == AppleBag ? Apple : this == OrangeBag ? Orange : this; }
         }
 
         internal BundleKind Hung
         {
-            get { return this == Sausage ? HangingSausage : this == Banana ? HangingBanana : this == Apple ? AppleBag : this; }
+            get { return this == Sausage ? HangingSausage : this == Banana ? HangingBanana : this == Apple ? AppleBag : this == Orange ? OrangeBag : this; }
         }
 
         // Loose pieces that only ever gather into their hanging kind: bananas into a
         // bunch, apples into a bag.
+        // Fruit that goes in a net bag.
+        internal bool IsBag
+        {
+            get { return this == AppleBag || this == OrangeBag; }
+        }
+
         internal bool AlwaysHung
         {
-            get { return this == Banana || this == Apple; }
+            get { return this == Banana || this == Apple || this == Orange; }
         }
 
         // Kinds that tie two loose pieces together. A banana only hangs.
@@ -292,7 +327,7 @@ namespace Dizzy.FirewoodBundle
 
         internal static bool AnyEnabled
         {
-            get { return Firewood.IsEnabled || Candle.IsEnabled || Sausage.IsEnabled || HangingSausage.IsEnabled || Banana.IsEnabled || Apple.IsEnabled; }
+            get { return Firewood.IsEnabled || Candle.IsEnabled || Sausage.IsEnabled || HangingSausage.IsEnabled || Banana.IsEnabled || Apple.IsEnabled || Orange.IsEnabled; }
         }
 
         internal static BundleKind Of(ShipItem ship)
@@ -311,6 +346,8 @@ namespace Dizzy.FirewoodBundle
                 return SausageStacks.IsHanging(ship) ? HangingBanana : Banana;
             if (ship is ShipItemFood && ship.name == SausageStacks.AppleName)
                 return SausageStacks.IsHanging(ship) ? AppleBag : Apple;
+            if (ship is ShipItemFood && ship.name == SausageStacks.OrangeName)
+                return SausageStacks.IsHanging(ship) ? OrangeBag : Orange;
             return null;
         }
     }

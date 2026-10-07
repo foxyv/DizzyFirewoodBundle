@@ -31,6 +31,10 @@ namespace Dizzy.FirewoodBundle
         internal static ConfigEntry<bool> ApplesEnabled;
         internal static ConfigEntry<int> MaxApples;
         internal static ConfigEntry<int> AppleLayerSizeAmount;
+        internal static ConfigEntry<float> NetThicknessAmount;
+        internal static ConfigEntry<bool> OrangesEnabled;
+        internal static ConfigEntry<int> MaxOranges;
+        internal static ConfigEntry<int> OrangeLayerSizeAmount;
         internal static ConfigEntry<bool> HooksEnabled;
         internal static ConfigEntry<int> MaxHooks;
         internal static ConfigEntry<float> HookMessiness;
@@ -186,6 +190,26 @@ namespace Dizzy.FirewoodBundle
         internal static int AppleLayerSize
         {
             get { return AppleLayerSizeAmount != null ? Mathf.Max(2, AppleLayerSizeAmount.Value) : 7; }
+        }
+
+        internal static float NetThickness
+        {
+            get { return NetThicknessAmount != null ? NetThicknessAmount.Value : 1.5f; }
+        }
+
+        internal static bool OrangesAreEnabled
+        {
+            get { return OrangesEnabled == null || OrangesEnabled.Value; }
+        }
+
+        internal static int OrangeLimit
+        {
+            get { return MaxOranges != null ? MaxOranges.Value : 24; }
+        }
+
+        internal static int OrangeLayerSize
+        {
+            get { return OrangeLayerSizeAmount != null ? Mathf.Max(2, OrangeLayerSizeAmount.Value) : 7; }
         }
 
         internal static bool HooksAreEnabled
@@ -408,6 +432,36 @@ namespace Dizzy.FirewoodBundle
                 7,
                 new ConfigDescription(
                     "How many apples sit in the bottom layer of a bag. Each layer above holds one fewer.",
+                    new AcceptableValueRange<int>(2, 12)));
+
+            NetThicknessAmount = config.Bind(
+                "Fruit Bags",
+                "Net Thickness",
+                1.5f,
+                new ConfigDescription(
+                    "Multiplier for how thick the strings of apple and orange bag nets are.",
+                    new AcceptableValueRange<float>(0.3f, 4f)));
+
+            OrangesEnabled = config.Bind(
+                "Orange Bags",
+                "Enabled",
+                true,
+                "Hold a dried orange and right-click another to put them in a net bag, or click an empty lamp hook with a dried orange to start a hanging bag. Right-click the bag with more dried oranges to add them, or with empty hands to take one out. Press the tie color key to change the net's color.");
+
+            MaxOranges = config.Bind(
+                "Orange Bags",
+                "MaxOranges",
+                24,
+                new ConfigDescription(
+                    "Most oranges in one bag, up to 999.",
+                    new AcceptableValueRange<int>(1, FirewoodPieces.MaxCount)));
+
+            OrangeLayerSizeAmount = config.Bind(
+                "Orange Bags",
+                "Layer Size",
+                7,
+                new ConfigDescription(
+                    "How many oranges sit in the bottom layer of a bag. Each layer above holds one fewer.",
                     new AcceptableValueRange<int>(2, 12)));
 
             HooksEnabled = config.Bind(
