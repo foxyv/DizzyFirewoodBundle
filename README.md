@@ -1,6 +1,6 @@
 # Dizzy Firewood Bundle
 
-A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepInEx 5](https://thunderstore.io/c/sailwind/p/BepInEx/BepInExPack/) that bundles loose firewood, candles, sausages and fishing hooks together.
+A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepInEx 5](https://thunderstore.io/c/sailwind/p/BepInEx/BepInExPack/) that bundles loose firewood, candles, sausages, bananas and fishing hooks together.
 
 ## Features
 
@@ -36,6 +36,15 @@ A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepI
 - Sausages hang in bunches around a central string, each on its own short white string. When a bunch is full, a new one starts lower down.
 - Right-click the bundle to take one sausage off. Taking the last one frees the hook.
 - Left-click lifts the whole bundle, which can be hung on another empty lamp hook.
+
+### Banana bunches
+- Click an empty lamp hook with a dried banana to hang it. Fresh bananas can't be hung.
+- Right-click the bunch with a dried banana to add it. Bananas grow from a stalk in hands, like a bunch on the tree turned upside down.
+- Right-click the bunch to take one banana off. Taking the last one frees the hook.
+- Left-click lifts the whole bunch, which can be hung on another empty lamp hook.
+- Hold a bunch and right-click a loose dried banana to add it to the bunch.
+- Press **G** on a dried banana in an open crate to pick up a bunch of the crate's dried bananas.
+- Press **G** on a loose dried banana lying around to pick up a bunch of the dried bananas within 3 m.
 
 ### Fishing hooks
 - Hold a fishing hook and right-click another hook to string them on a line.
@@ -76,6 +85,11 @@ Settings are in `BepInEx\config\com.dizzy.sailwind.firewoodbundle.cfg`. The file
 | Hanging Sausages | Bunch Drop | 2 | How far below the last bunch a new one starts. |
 | Hanging Sausages | String Length | 1 | Length of each sausage's string. |
 | Hanging Sausages | Flare | 0.75 | How far sausages lean out. 1 just clears the bunch below. 0 hangs straight down. |
+| Banana Bunches | Enabled | true | Turns banana bunches on or off. |
+| Banana Bunches | MaxBananas | 45 | Most bananas in a bunch, up to 999. |
+| Banana Bunches | Hand Size | 8 | Bananas around the stalk in one hand. |
+| Banana Bunches | Hand Drop | 1 | How far below the last hand a new one starts. |
+| Banana Bunches | Splay | 35 | Degrees the top hand points out from straight down. Lower hands point steeper. |
 | Hooks | Enabled | true | Turns hook lines on or off. |
 | Hooks | MaxHooks | 20 | Most hooks on one line. |
 | Hooks | Hook Messiness | 1 | How far each hook is shifted and tilted off a neat line. |
@@ -106,7 +120,7 @@ dotnet build src\Dizzy.FirewoodBundle\Dizzy.FirewoodBundle.csproj -c Release -p:
 To package a release zip into `dist\`, run:
 
 ```powershell
-.\scripts\package-release.ps1 -Version 0.6.0
+.\scripts\package-release.ps1 -Version 0.7.0
 ```
 
 ## License

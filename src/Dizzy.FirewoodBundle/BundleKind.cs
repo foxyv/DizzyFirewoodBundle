@@ -78,6 +78,33 @@ namespace Dizzy.FirewoodBundle
             1f,
             false);
 
+        // A loose banana. Bananas never bundle with each other; they only hang.
+        internal static readonly BundleKind Banana = new BundleKind(
+            "banana",
+            "bananas",
+            "Banana",
+            "Bunch",
+            "",
+            new string[0],
+            new Color[0],
+            TieStyle.None,
+            1f,
+            false);
+
+        // Dried bananas in hands around a stalk under a lamp hook, like a bunch on the
+        // tree turned upside down.
+        internal static readonly BundleKind HangingBanana = new BundleKind(
+            "banana bunch",
+            "bananas",
+            "Banana",
+            "Bunch",
+            "",
+            new string[0],
+            new Color[0],
+            TieStyle.None,
+            1f,
+            false);
+
         internal readonly string BundleName;
         internal readonly string Plural;
         internal readonly string Single;
@@ -135,6 +162,8 @@ namespace Dizzy.FirewoodBundle
                     return FirewoodBundleConfig.CandlesAreEnabled;
                 if (this == HangingSausage)
                     return FirewoodBundleConfig.HangingAreEnabled;
+                if (this == Banana || this == HangingBanana)
+                    return FirewoodBundleConfig.BananasAreEnabled;
                 return FirewoodBundleConfig.SausagesAreEnabled;
             }
         }
@@ -148,9 +177,40 @@ namespace Dizzy.FirewoodBundle
                     ? FirewoodBundleConfig.PieceLimit
                     : this == Candle
                         ? FirewoodBundleConfig.CandleLimit
-                        : this == HangingSausage ? FirewoodBundleConfig.HangingLimit : FirewoodBundleConfig.SausageLimit;
+                        : this == HangingSausage
+                            ? FirewoodBundleConfig.HangingLimit
+                            : this == HangingBanana || this == Banana ? FirewoodBundleConfig.BananaLimit : FirewoodBundleConfig.SausageLimit;
                 return Mathf.Clamp(limit, 2, FirewoodPieces.MaxCount);
             }
+        }
+
+        // Hangs from a lamp hook and stays a bundle even with one piece left.
+        internal bool Hangs
+        {
+            get { return this == HangingSausage || this == HangingBanana; }
+        }
+
+        // Food whose count lives in a StackState rather than in amount.
+        internal bool IsFood
+        {
+            get { return this == Sausage || this == HangingSausage || this == Banana || this == HangingBanana; }
+        }
+
+        // The loose piece a hanging kind is made of, and the other way round.
+        internal BundleKind Loose
+        {
+            get { return this == HangingSausage ? Sausage : this == HangingBanana ? Banana : this; }
+        }
+
+        internal BundleKind Hung
+        {
+            get { return this == Sausage ? HangingSausage : this == Banana ? HangingBanana : this; }
+        }
+
+        // Kinds that tie two loose pieces together. A banana only hangs.
+        internal bool Bundles
+        {
+            get { return this != Banana; }
         }
 
         internal int ColorCount
@@ -178,7 +238,7 @@ namespace Dizzy.FirewoodBundle
 
         internal static bool AnyEnabled
         {
-            get { return Firewood.IsEnabled || Candle.IsEnabled || Sausage.IsEnabled || HangingSausage.IsEnabled; }
+            get { return Firewood.IsEnabled || Candle.IsEnabled || Sausage.IsEnabled || HangingSausage.IsEnabled || Banana.IsEnabled; }
         }
 
         internal static BundleKind Of(ShipItem ship)
@@ -193,6 +253,8 @@ namespace Dizzy.FirewoodBundle
                 return Candle;
             if (ship is ShipItemFood && ship.name == SausageStacks.ItemName)
                 return SausageStacks.IsHanging(ship) ? HangingSausage : Sausage;
+            if (ship is ShipItemFood && ship.name == SausageStacks.BananaName)
+                return SausageStacks.IsHanging(ship) ? HangingBanana : Banana;
             return null;
         }
     }

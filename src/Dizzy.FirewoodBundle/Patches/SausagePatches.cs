@@ -75,6 +75,17 @@ namespace Dizzy.FirewoodBundle
         }
     }
 
+    // The mouth starts chewing on any held food that comes near it, and keeps chewing
+    // until it leaves. A stack or a hanging bunch never gets that far.
+    [HarmonyPatch(typeof(MouthCol), nameof(MouthCol.OnTriggerEnter))]
+    internal static class SausageMouthPatch
+    {
+        private static bool Prefix(Collider other)
+        {
+            return other == null || !SausageStacks.IsStack(other.GetComponent<ShipItemFood>());
+        }
+    }
+
     // The stove takes any food that touches its fire, so a stack only has to come near.
     // It stays out quietly; this is not something the player tried to do.
     [HarmonyPatch(typeof(CookableFood), nameof(CookableFood.InsertIntoCookTrigger))]
@@ -119,13 +130,15 @@ namespace Dizzy.FirewoodBundle
     {
         private static void Postfix(ShipItemFood __instance, GoPointerButton lookedAtButton, ref bool __result)
         {
-            if (__result || lookedAtButton == null || !BundleKind.HangingSausage.IsEnabled)
+            if (__result || lookedAtButton == null)
+                return;
+            BundleKind kind = FirewoodPieces.KindOf(__instance);
+            if (kind == null || !kind.Hung.Hangs || !kind.Hung.IsEnabled)
                 return;
             ShipItemLampHook lamp = lookedAtButton.GetComponent<ShipItemLampHook>();
             if (lamp == null || HookLinePieces.LampIsOccupied(lamp))
                 return;
-            BundleKind kind = FirewoodPieces.KindOf(__instance);
-            if (kind == BundleKind.HangingSausage || (kind == BundleKind.Sausage && FirewoodPieces.CountOf(__instance) <= 1))
+            if (kind.Hangs || FirewoodPieces.CountOf(__instance) <= 1)
                 __result = true;
         }
     }
@@ -139,14 +152,13 @@ namespace Dizzy.FirewoodBundle
         private static bool Prefix(ShipItemLampHook __instance, PickupableItem heldItem, ref bool __result)
         {
             ShipItem held = FirewoodPieces.AsShip(heldItem);
-            if (!BundleKind.HangingSausage.IsEnabled || FirewoodPieces.KindOf(held) != BundleKind.Sausage)
+            BundleKind kind = FirewoodPieces.KindOf(held);
+            if (kind == null || kind.Hangs || !kind.Hung.Hangs || !kind.Hung.IsEnabled)
                 return true;
             if (FirewoodPieces.CountOf(held) > 1 || HookLinePieces.LampIsOccupied(__instance))
                 return true;
 
-            string refusal = !SausageStacks.IsPreserved(held)
-                ? SausageStacks.Unpreserved
-                : !SausageStacks.IsWhole(held) ? SausageStacks.Eaten : null;
+            string refusal = SausageStacks.HangRefusal(held);
             if (refusal != null)
             {
                 SausageStacks.Notify(refusal);
@@ -164,10 +176,7 @@ namespace Dizzy.FirewoodBundle
     {
         internal static bool Allow(UnityEngine.Component food)
         {
-            if (!SausageStacks.IsStack(food))
-                return true;
-            SausageStacks.Notify(SausageStacks.TakeOneFirst);
-            return false;
+            return !SausageStacks.IsStack(food);
         }
     }
 }
