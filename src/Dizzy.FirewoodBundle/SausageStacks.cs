@@ -9,6 +9,7 @@ namespace Dizzy.FirewoodBundle
     {
         internal int Count = 1;
         internal int Width;
+        internal int Color;
     }
 
     // Only sausages that will not spoil stack, and only with the same kind of sausage.
@@ -19,6 +20,9 @@ namespace Dizzy.FirewoodBundle
         internal const string BananaName = "banana";
         internal const string FreshBanana = "Only dried bananas can hang";
         internal const string EatenBanana = "Cannot hang eaten bananas";
+        internal const string AppleName = "apple";
+        internal const string FreshApple = "Only dried apples go in a bag";
+        internal const string EatenApple = "Cannot bag eaten apples";
         internal const string Unpreserved = "Cannot stack unpreserved sausages";
         internal const string DifferentKind = "Cannot stack different kinds of sausage";
         internal const string Eaten = "Cannot stack eaten sausages";
@@ -34,6 +38,7 @@ namespace Dizzy.FirewoodBundle
         // sausage left, since it is still tied to its hook.
         internal const int HangWidth = 8;
         private const int WidthStride = 1000;
+        private const int ColorStride = 10000;
 
         private static float _notifiedAt = -10f;
 
@@ -69,6 +74,19 @@ namespace Dizzy.FirewoodBundle
             state.Count = Mathf.Max(1, count);
         }
 
+        internal static int ColorOf(ShipItem item)
+        {
+            StackState state = item != null ? item.GetComponent<StackState>() : null;
+            return state != null ? state.Color : 0;
+        }
+
+        internal static void WriteColor(ShipItem item, int color)
+        {
+            StackState state = item != null ? item.GetComponent<StackState>() : null;
+            if (state != null)
+                state.Color = color;
+        }
+
         internal static bool IsHanging(Component component)
         {
             StackState state = component != null ? component.GetComponent<StackState>() : null;
@@ -93,23 +111,27 @@ namespace Dizzy.FirewoodBundle
                 return;
             state.Count = 1;
             state.Width = 0;
+            state.Color = 0;
         }
 
         // The stack is saved in the food's spare extra value: count + width * 1000.
         internal static float Encode(ShipItem item)
         {
-            return CountOf(item) + WidthOf(item) * WidthStride;
+            return CountOf(item) + WidthOf(item) * WidthStride + ColorOf(item) * ColorStride;
         }
 
         internal static void Decode(ShipItem item, float saved)
         {
             int value = Mathf.RoundToInt(saved);
+            int color = value / ColorStride;
+            value %= ColorStride;
             int count = value % WidthStride;
             int width = value / WidthStride;
             if (width == HangWidth && count >= 1)
             {
                 MakeHanging(item);
                 WriteCount(item, count);
+                WriteColor(item, color);
                 return;
             }
             if (count <= 1)
@@ -131,7 +153,7 @@ namespace Dizzy.FirewoodBundle
             FoodState food = item != null ? item.GetComponent<FoodState>() : null;
             if (food == null || food.spoiled > 0.9f)
                 return false;
-            if (IsBanana(item))
+            if (IsBanana(item) || IsApple(item))
                 return food.dried >= 0.99f;
             return food.smoked >= 0.99f || food.dried >= 0.99f;
         }
@@ -185,6 +207,12 @@ namespace Dizzy.FirewoodBundle
         // Why these two cannot stack, or null when they can.
         internal static string Rejection(ShipItem held, ShipItem target)
         {
+            if (IsApple(held) && IsApple(target))
+            {
+                if (!IsPreserved(held) || !IsPreserved(target))
+                    return FreshApple;
+                return !IsWhole(held) || !IsWhole(target) ? EatenApple : null;
+            }
             if (IsBanana(held) && IsBanana(target))
             {
                 if (!IsPreserved(held) || !IsPreserved(target))
@@ -214,14 +242,21 @@ namespace Dizzy.FirewoodBundle
             return kind == BundleKind.Banana || kind == BundleKind.HangingBanana;
         }
 
+        internal static bool IsApple(ShipItem item)
+        {
+            BundleKind kind = FirewoodPieces.KindOf(item);
+            return kind == BundleKind.Apple || kind == BundleKind.AppleBag;
+        }
+
         // Why this loose piece cannot start a hanging bundle, or null.
         internal static string HangRefusal(ShipItem item)
         {
             bool banana = IsBanana(item);
+            bool apple = IsApple(item);
             if (!IsPreserved(item))
-                return banana ? FreshBanana : Unpreserved;
+                return apple ? FreshApple : banana ? FreshBanana : Unpreserved;
             if (!IsWhole(item))
-                return banana ? EatenBanana : Eaten;
+                return apple ? EatenApple : banana ? EatenBanana : Eaten;
             return null;
         }
 

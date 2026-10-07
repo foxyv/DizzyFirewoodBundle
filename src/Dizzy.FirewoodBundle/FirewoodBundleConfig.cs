@@ -28,6 +28,9 @@ namespace Dizzy.FirewoodBundle
         internal static ConfigEntry<int> BananaHandSizeAmount;
         internal static ConfigEntry<float> BananaHandDropAmount;
         internal static ConfigEntry<float> BananaSplayAmount;
+        internal static ConfigEntry<bool> ApplesEnabled;
+        internal static ConfigEntry<int> MaxApples;
+        internal static ConfigEntry<int> AppleLayerSizeAmount;
         internal static ConfigEntry<bool> HooksEnabled;
         internal static ConfigEntry<int> MaxHooks;
         internal static ConfigEntry<float> HookMessiness;
@@ -168,6 +171,21 @@ namespace Dizzy.FirewoodBundle
         internal static float BananaSplay
         {
             get { return BananaSplayAmount != null ? BananaSplayAmount.Value : 35f; }
+        }
+
+        internal static bool ApplesAreEnabled
+        {
+            get { return ApplesEnabled == null || ApplesEnabled.Value; }
+        }
+
+        internal static int AppleLimit
+        {
+            get { return MaxApples != null ? MaxApples.Value : 24; }
+        }
+
+        internal static int AppleLayerSize
+        {
+            get { return AppleLayerSizeAmount != null ? Mathf.Max(2, AppleLayerSizeAmount.Value) : 7; }
         }
 
         internal static bool HooksAreEnabled
@@ -369,6 +387,28 @@ namespace Dizzy.FirewoodBundle
                 new ConfigDescription(
                     "Degrees each banana points out from straight down. 0 hangs them straight down.",
                     new AcceptableValueRange<float>(0f, 80f)));
+
+            ApplesEnabled = config.Bind(
+                "Apple Bags",
+                "Enabled",
+                true,
+                "Hold a dried apple and right-click another to put them in a net bag, or click an empty lamp hook with a dried apple to start a hanging bag. Right-click the bag with more dried apples to add them, or with empty hands to take one out. Press the tie color key to change the net's color.");
+
+            MaxApples = config.Bind(
+                "Apple Bags",
+                "MaxApples",
+                24,
+                new ConfigDescription(
+                    "Most apples in one bag, up to 999.",
+                    new AcceptableValueRange<int>(1, FirewoodPieces.MaxCount)));
+
+            AppleLayerSizeAmount = config.Bind(
+                "Apple Bags",
+                "Layer Size",
+                7,
+                new ConfigDescription(
+                    "How many apples sit in the bottom layer of a bag. Each layer above holds one fewer.",
+                    new AcceptableValueRange<int>(2, 12)));
 
             HooksEnabled = config.Bind(
                 "Hooks",
