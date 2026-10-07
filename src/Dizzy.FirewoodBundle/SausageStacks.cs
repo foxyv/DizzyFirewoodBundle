@@ -23,6 +23,9 @@ namespace Dizzy.FirewoodBundle
         internal const string AppleName = "apple";
         internal const string FreshApple = "Only dried apples go in a bag";
         internal const string EatenApple = "Cannot bag eaten apples";
+        internal const string OrangeName = "orange";
+        internal const string FreshOrange = "Only dried oranges go in a bag";
+        internal const string EatenOrange = "Cannot bag eaten oranges";
         internal const string Unpreserved = "Cannot stack unpreserved sausages";
         internal const string DifferentKind = "Cannot stack different kinds of sausage";
         internal const string Eaten = "Cannot stack eaten sausages";
@@ -153,7 +156,7 @@ namespace Dizzy.FirewoodBundle
             FoodState food = item != null ? item.GetComponent<FoodState>() : null;
             if (food == null || food.spoiled > 0.9f)
                 return false;
-            if (IsBanana(item) || IsApple(item))
+            if (IsBanana(item) || IsApple(item) || IsOrange(item))
                 return food.dried >= 0.99f;
             return food.smoked >= 0.99f || food.dried >= 0.99f;
         }
@@ -207,6 +210,12 @@ namespace Dizzy.FirewoodBundle
         // Why these two cannot stack, or null when they can.
         internal static string Rejection(ShipItem held, ShipItem target)
         {
+            if (IsOrange(held) && IsOrange(target))
+            {
+                if (!IsPreserved(held) || !IsPreserved(target))
+                    return FreshOrange;
+                return !IsWhole(held) || !IsWhole(target) ? EatenOrange : null;
+            }
             if (IsApple(held) && IsApple(target))
             {
                 if (!IsPreserved(held) || !IsPreserved(target))
@@ -248,15 +257,22 @@ namespace Dizzy.FirewoodBundle
             return kind == BundleKind.Apple || kind == BundleKind.AppleBag;
         }
 
+        internal static bool IsOrange(ShipItem item)
+        {
+            BundleKind kind = FirewoodPieces.KindOf(item);
+            return kind == BundleKind.Orange || kind == BundleKind.OrangeBag;
+        }
+
         // Why this loose piece cannot start a hanging bundle, or null.
         internal static string HangRefusal(ShipItem item)
         {
             bool banana = IsBanana(item);
             bool apple = IsApple(item);
+            bool orange = IsOrange(item);
             if (!IsPreserved(item))
-                return apple ? FreshApple : banana ? FreshBanana : Unpreserved;
+                return orange ? FreshOrange : apple ? FreshApple : banana ? FreshBanana : Unpreserved;
             if (!IsWhole(item))
-                return apple ? EatenApple : banana ? EatenBanana : Eaten;
+                return orange ? EatenOrange : apple ? EatenApple : banana ? EatenBanana : Eaten;
             return null;
         }
 
