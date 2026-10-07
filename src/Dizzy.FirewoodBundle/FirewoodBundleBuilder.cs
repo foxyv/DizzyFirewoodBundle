@@ -31,6 +31,11 @@ namespace Dizzy.FirewoodBundle
         // How far below the hang point the first bunch is tied, and how thick its strings are.
         private const float HangTop = 0.05f;
         private const float HangCord = 0.003f;
+        // An apple bag's net strands, how far below the hook its neck is tied, and how
+        // thick the gathered neck is.
+        private const float AppleNet = 0.0025f;
+        private const float AppleTie = 0.07f;
+        private const float AppleNeck = 0.012f;
         private const int PileTries = 8;
 
         private static readonly Dictionary<int, int> Stamps = new Dictionary<int, int>();
@@ -164,6 +169,11 @@ namespace Dizzy.FirewoodBundle
             if (FirewoodPieces.KindOf(item) == BundleKind.HangingBanana)
             {
                 ApplyBananaBunch(item);
+                return;
+            }
+            if (FirewoodPieces.KindOf(item) == BundleKind.AppleBag)
+            {
+                ApplyAppleBag(item);
                 return;
             }
             if (FirewoodPieces.KindOf(item) == BundleKind.HangingSausage)
@@ -770,6 +780,281 @@ namespace Dizzy.FirewoodBundle
             QuietHull(item);
         }
 
+        // An apple bag: apples settle in layers at the bottom of a net, each layer one
+        // apple smaller than the one under it, and the net closes over them to a neck
+        // tied below the hook. The same shape hangs from a hook or sits on the deck.
+        private static void ApplyAppleBag(ShipItem item)
+        {
+            MeshRenderer source = item.GetComponent<MeshRenderer>();
+            MeshFilter filter = item.GetComponent<MeshFilter>();
+            Mesh mesh = filter != null ? filter.sharedMesh : null;
+            if (mesh == null || source == null)
+                return;
+
+            int count = FirewoodPieces.CountOf(item);
+            Bounds apple = mesh.bounds;
+            float radius = Mathf.Max(apple.extents.x, Mathf.Max(apple.extents.y, apple.extents.z)) * 0.92f;
+            int baseLayer = FirewoodBundleConfig.AppleLayerSize;
+            SaveablePrefab save = item.GetComponent<SaveablePrefab>();
+            int seed = save != null ? save.instanceId : 0;
+
+            // Fill from the bottom: layer L holds baseLayer - L apples, at least one.
+            var layerSizes = new List<int>();
+            int left = count;
+            while (left > 0)
+            {
+                int size = Mathf.Min(left, Mathf.Max(1, baseLayer - layerSizes.Count));
+                layerSizes.Add(size);
+                left -= size;
+            }
+
+            // A lone apple on top looks lost, so it gets one from the layer under it.
+            int last = layerSizes.Count - 1;
+            if (last > 0 && layerSizes[last] == 1 && layerSizes[last - 1] > 2)
+            {
+                layerSizes[last] = 2;
+                layerSizes[last - 1]--;
+            }
+
+            int layers = layerSizes.Count;
+            float step = radius * 1.6f;
+            float neck = -AppleTie;
+            float topCenter = neck - radius * 1.9f;
+            var layerY = new float[layers];
+            var layerRing = new float[layers];
+            for (int layer = 0; layer < layers; layer++)
+            {
+                layerY[layer] = topCenter - (layers - 1 - layer) * step;
+                layerRing[layer] = RingRadius(layerSizes[layer], radius);
+            }
+
+            ClearSticks(item);
+            ClearHull(item);
+            source.enabled = false;
+            Material[] materials = source.sharedMaterials;
+            var renderers = new List<Renderer>();
+            var centers = new List<Vector3>(count);
+            var turns = new List<Quaternion>(count);
+            int index = 0;
+            for (int layer = 0; layer < layers; layer++)
+            {
+                int size = layerSizes[layer];
+                bool middle = size >= 7;
+                int around = middle ? size - 1 : size;
+                float ring = middle ? radius * 2f : layerRing[layer];
+                for (int k = 0; k < size; k++, index++)
+                {
+                    Vector3 place;
+                    if (middle && k == size - 1)
+                    {
+                        place = new Vector3(0f, layerY[layer], 0f);
+                    }
+                    else
+                    {
+                        float angle = (k + layer * 0.5f) * Mathf.PI * 2f / Mathf.Max(1, around);
+                        float r = around > 1 ? ring : 0f;
+                        place = new Vector3(Mathf.Cos(angle) * r, layerY[layer], Mathf.Sin(angle) * r);
+                    }
+                    place += new Vector3(PileHash(seed, index, 13) - 0.5f, 0f, PileHash(seed, index, 14) - 0.5f) * radius * 0.12f;
+                    Quaternion turn = Quaternion.AngleAxis(PileHash(seed, index, 15) * 360f, Vector3.up)
+                        * Quaternion.AngleAxis((PileHash(seed, index, 16) - 0.5f) * 50f, Vector3.right);
+                    Vector3 position = place - turn * apple.center;
+                    renderers.Add(CreateStick(item, mesh, materials, position, turn, source));
+                    centers.Add(position);
+                    turns.Add(turn);
+                }
+            }
+
+            // The net follows the heap: around each layer it bulges over the apples, above
+            // the top layer it closes in to the neck, and under the bottom one it rounds off.
+            // The net clears the whole apple, tilted and nudged, not just its packing size.
+            float reach = Mathf.Max(apple.extents.x, Mathf.Max(apple.extents.y, apple.extents.z)) * 1.02f + radius * 0.03f;
+            float bottom = layerY[0] - reach * 1.1f;
+            float topLayer = layerY[layers - 1];
+            float topWidth = layerRing[layers - 1] + reach;
+            System.Func<float, float> profile = y =>
+            {
+                // Under the bottom layer the net rounds into a flat floor that meets in the middle.
+                if (y < layerY[0])
+                {
+                    float d = Mathf.Clamp01((layerY[0] - y) / (layerY[0] - bottom));
+                    return (layerRing[0] + reach) * Mathf.Pow(Mathf.Max(0f, 1f - d * d * d * d), 0.25f);
+                }
+                float widest = 0f;
+                for (int layer = 0; layer < layers; layer++)
+                {
+                    float d = (y - layerY[layer]) / (reach * 1.25f);
+                    if (d * d < 1f)
+                        widest = Mathf.Max(widest, layerRing[layer] + reach * Mathf.Sqrt(1f - d * d));
+                }
+                if (y > layerY[0] && y < topLayer)
+                    widest = Mathf.Max(widest, Mathf.Min(layerRing[0], topWidth) + reach * 0.8f);
+                // Over the top the net domes down onto the top layer and closes to the neck,
+                // still hugging any lower layer that bulges out past it.
+                if (y >= topLayer)
+                {
+                    float t = Mathf.InverseLerp(topLayer, neck, y);
+                    widest = Mathf.Max(widest, AppleNeck + (topWidth - AppleNeck) * Mathf.Sqrt(Mathf.Max(0f, 1f - t * t)));
+                }
+                return widest;
+            };
+
+            Material net = StringMaterial(BundleKind.AppleBag, FirewoodPieces.ColorOf(item));
+            if (net != null)
+            {
+                const int strands = 14;
+                const int samples = 28;
+                float twist = Mathf.PI * 1.1f;
+                for (int family = 0; family < 2; family++)
+                {
+                    float sign = family == 0 ? 1f : -1f;
+                    for (int strand = 0; strand < strands; strand++)
+                    {
+                        var points = new List<Vector3>(samples + 1);
+                        for (int sample = 0; sample <= samples; sample++)
+                        {
+                            float t = sample / (float)samples;
+                            float y = Mathf.Lerp(bottom, neck, t);
+                            float r = profile(y) + AppleNet;
+                            float angle = strand * Mathf.PI * 2f / strands + sign * t * twist;
+                            points.Add(new Vector3(Mathf.Cos(angle) * r, y, Mathf.Sin(angle) * r));
+                        }
+                        Renderer line = CreateCordLine(item, net, points);
+                        if (line != null)
+                            renderers.Add(line);
+                    }
+                }
+
+                // The gathered neck, a tuft above it, and the loop up to the hook.
+                Renderer tie = CreateCordPiece(item, net, new Vector3(0f, neck - 0.01f, 0f), new Vector3(0f, neck + 0.012f, 0f), 0, AppleNeck);
+                if (tie != null)
+                    renderers.Add(tie);
+                for (int tuft = 0; tuft < 6; tuft++)
+                {
+                    float angle = tuft * Mathf.PI / 3f;
+                    Vector3 end = new Vector3(Mathf.Cos(angle) * 0.03f, neck + 0.03f, Mathf.Sin(angle) * 0.03f);
+                    Renderer piece = CreateCordPiece(item, net, new Vector3(0f, neck + 0.01f, 0f), end, 1, AppleNet * 1.5f);
+                    if (piece != null)
+                        renderers.Add(piece);
+                }
+                Renderer loop = CreateCordPiece(item, net, new Vector3(0f, neck, 0f), Vector3.zero, 0, AppleNet * 1.5f);
+                if (loop != null)
+                    renderers.Add(loop);
+            }
+
+            IncludeInLod(item, renderers);
+            item.lookText = FirewoodPieces.LookText(item, count);
+            item.description = "";
+            item.big = false;
+            ShipItem prefab = FirewoodPieces.PrefabOf(item);
+            if (prefab != null)
+                item.holdDistance = prefab.holdDistance + layerRing[0] + radius;
+            ApplyMass(item, count);
+            Bounds bundle = BundleBounds(centers, mesh, turns);
+            bundle.Encapsulate(Vector3.zero);
+            bundle.Expand(0.01f);
+            FitBox(item, bundle);
+            if (item.GetComponent<HangableItem>() == null)
+                item.gameObject.AddComponent<HangableItem>();
+            QuietHull(item);
+        }
+
+        // How far from the middle a ring of this many apples sits so they just touch.
+        private static float RingRadius(int size, float radius)
+        {
+            if (size <= 1)
+                return 0f;
+            if (size >= 7)
+                return radius * 2f;
+            return radius / Mathf.Sin(Mathf.PI / size);
+        }
+
+        // A strand of net lies on the bag's surface, so its tube is framed by the way
+        // out from the middle rather than by one fixed axis, which would flatten it
+        // where it runs along that axis.
+        private static Mesh NetStrandMesh(List<Vector3> points, float radius)
+        {
+            const int sides = 5;
+            int count = points.Count;
+            var vertices = new Vector3[count * sides];
+            var normals = new Vector3[count * sides];
+            var triangles = new int[(count - 1) * sides * 6];
+            for (int i = 0; i < count; i++)
+            {
+                Vector3 tangent = points[Mathf.Min(count - 1, i + 1)] - points[Mathf.Max(0, i - 1)];
+                tangent = tangent.sqrMagnitude > 0.0000001f ? tangent.normalized : Vector3.up;
+                Vector3 radial = new Vector3(points[i].x, 0f, points[i].z);
+                radial = radial.sqrMagnitude > 0.0000001f ? radial.normalized : Vector3.right;
+                Vector3 side = Vector3.Cross(tangent, radial);
+                side = side.sqrMagnitude > 0.0000001f ? side.normalized : Vector3.forward;
+                Vector3 across = Vector3.Cross(side, tangent).normalized;
+                for (int k = 0; k < sides; k++)
+                {
+                    float angle = k * Mathf.PI * 2f / sides;
+                    Vector3 normal = side * Mathf.Cos(angle) + across * Mathf.Sin(angle);
+                    vertices[i * sides + k] = points[i] + normal * radius;
+                    normals[i * sides + k] = normal;
+                }
+            }
+
+            int t = 0;
+            for (int i = 0; i < count - 1; i++)
+            {
+                for (int k = 0; k < sides; k++)
+                {
+                    int k1 = (k + 1) % sides;
+                    int a = i * sides + k;
+                    int b = i * sides + k1;
+                    int c = (i + 1) * sides + k;
+                    int d = (i + 1) * sides + k1;
+                    triangles[t++] = a;
+                    triangles[t++] = c;
+                    triangles[t++] = b;
+                    triangles[t++] = b;
+                    triangles[t++] = c;
+                    triangles[t++] = d;
+                }
+            }
+
+            var mesh = new Mesh();
+            mesh.name = StringName;
+            mesh.vertices = vertices;
+            mesh.normals = normals;
+            mesh.triangles = triangles;
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        // A bent piece of string through every point.
+        private static Renderer CreateCordLine(ShipItem item, Material material, List<Vector3> points)
+        {
+            if (points == null || points.Count < 2)
+                return null;
+            Mesh mesh = NetStrandMesh(points, AppleNet);
+            if (mesh == null)
+                return null;
+            var piece = new GameObject(StringName);
+            piece.layer = item.gameObject.layer;
+            piece.transform.SetParent(item.transform, false);
+            MeshFilter filter = piece.AddComponent<MeshFilter>();
+            filter.sharedMesh = mesh;
+            MeshRenderer renderer = piece.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            Outline rootOutline = item.GetComponent<Outline>();
+            Outline outline = piece.AddComponent<Outline>();
+            outline.enabled = false;
+            if (rootOutline != null)
+            {
+                outline.color = rootOutline.color;
+                outline.eraseRenderer = rootOutline.eraseRenderer;
+                outline.originalLayer = rootOutline.originalLayer;
+            }
+
+            return renderer;
+        }
+
         // One straight piece of string. The frame axis is the one most across it.
         private static Renderer CreateCordPiece(ShipItem item, Material material, Vector3 from, Vector3 to, int frameAxis, float radius = HangCord)
         {
@@ -906,7 +1191,8 @@ namespace Dizzy.FirewoodBundle
         // A new tie color only swaps the material on the tie and the knot.
         internal static void Recolor(ShipItem item)
         {
-            if (item == null || FirewoodPieces.CountOf(item) <= 1)
+            BundleKind kind = FirewoodPieces.KindOf(item);
+            if (item == null || (FirewoodPieces.CountOf(item) <= 1 && (kind == null || !kind.Hangs)))
                 return;
             Material material = StringMaterial(FirewoodPieces.KindOf(item), FirewoodPieces.ColorOf(item));
             if (material == null)

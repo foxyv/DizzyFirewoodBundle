@@ -1061,7 +1061,7 @@ namespace Dizzy.FirewoodBundle
             {
                 ShipItem item = __instance.GetComponent<ShipItem>();
                 BundleKind kind = FirewoodPieces.KindOf(item);
-                if (data != null && (kind == BundleKind.Sausage || kind == BundleKind.Banana))
+                if (data != null && kind != null && kind.IsFood && !kind.Hangs)
                     SausageStacks.Decode(item, data.extraValue4);
                 kind = FirewoodPieces.KindOf(item);
                 if (FirewoodPieces.CountOf(item) > 1 || (kind != null && kind.Hangs))

@@ -1,6 +1,6 @@
 # Dizzy Firewood Bundle
 
-A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepInEx 5](https://thunderstore.io/c/sailwind/p/BepInEx/BepInExPack/) that bundles loose firewood, candles, sausages, bananas and fishing hooks together.
+A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepInEx 5](https://thunderstore.io/c/sailwind/p/BepInEx/BepInExPack/) that bundles loose firewood, candles, sausages, bananas, apples and fishing hooks together.
 
 ## Features
 
@@ -9,6 +9,7 @@ A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepI
 - Right-click a bundle to take one log off.
 - Click a stove with a bundle to feed it one log. The rest stay in your hands.
 - Look at a loose log in an open crate and press **G** to pick up a bundle of the crate's loose logs.
+- Press **G** on a loose log lying around to pick up a bundle of the loose logs within 3 m.
 
 ### Candles
 - Hold a candle and right-click another candle to tie them into a bundle with a red ribbon and a bow.
@@ -17,7 +18,7 @@ A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepI
 
 ### Tie colors
 - Hold or look at a firewood or candle bundle and press **\\** to change its tie color.
-- Candles: red, blue, green, gold, white, black, purple and pink. Firewood: its natural brown, then the same eight.
+- Candles: red, blue, green, gold, white, black, purple, pink and orange. Firewood: its natural brown, then the same nine. Apple bags: the same nine, starting from black.
 
 ### Sausages
 - Hold a smoked or dried sausage and right-click another of the same kind to stack them.
@@ -45,6 +46,13 @@ A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepI
 - Hold a bunch and right-click a loose dried banana to add it to the bunch.
 - Press **G** on a dried banana in an open crate to pick up a bunch of the crate's dried bananas.
 - Press **G** on a loose dried banana lying around to pick up a bunch of the dried bananas within 3 m.
+
+### Apple bags
+- Hold a dried apple and right-click another to put them in a net bag, or click an empty lamp hook with a dried apple to start a hanging bag. Fresh apples can't go in.
+- Right-click the bag with a dried apple to add it, or hold the bag and right-click loose dried apples.
+- Apples settle in layers at the bottom of the net, and the net is tied at the neck. A bag hangs from a lamp hook or sits on the deck.
+- Right-click the bag with empty hands to take an apple out. Press **\\** to change the net's color.
+- Press **G** on a dried apple in an open crate, or on a loose one lying around, to pick up a bag of the dried apples there.
 
 ### Fishing hooks
 - Hold a fishing hook and right-click another hook to string them on a line.
@@ -90,6 +98,9 @@ Settings are in `BepInEx\config\com.dizzy.sailwind.firewoodbundle.cfg`. The file
 | Banana Bunches | Hand Size | 8 | Bananas around the stalk in one hand. |
 | Banana Bunches | Hand Drop | 1 | How far below the last hand a new one starts. |
 | Banana Bunches | Splay | 35 | Degrees the top hand points out from straight down. Lower hands point steeper. |
+| Apple Bags | Enabled | true | Turns apple bags on or off. |
+| Apple Bags | MaxApples | 24 | Most apples in a bag, up to 999. |
+| Apple Bags | Layer Size | 7 | Apples in the bottom layer. Each layer above holds one fewer. |
 | Hooks | Enabled | true | Turns hook lines on or off. |
 | Hooks | MaxHooks | 20 | Most hooks on one line. |
 | Hooks | Hook Messiness | 1 | How far each hook is shifted and tilted off a neat line. |
@@ -120,7 +131,7 @@ dotnet build src\Dizzy.FirewoodBundle\Dizzy.FirewoodBundle.csproj -c Release -p:
 To package a release zip into `dist\`, run:
 
 ```powershell
-.\scripts\package-release.ps1 -Version 0.7.0
+.\scripts\package-release.ps1 -Version 0.8.0
 ```
 
 ## License
