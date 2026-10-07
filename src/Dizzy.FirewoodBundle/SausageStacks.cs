@@ -16,10 +16,12 @@ namespace Dizzy.FirewoodBundle
     internal static class SausageStacks
     {
         internal const string ItemName = "sausage";
+        internal const string BananaName = "banana";
+        internal const string FreshBanana = "Only dried bananas can hang";
+        internal const string EatenBanana = "Cannot hang eaten bananas";
         internal const string Unpreserved = "Cannot stack unpreserved sausages";
         internal const string DifferentKind = "Cannot stack different kinds of sausage";
         internal const string Eaten = "Cannot stack eaten sausages";
-        internal const string TakeOneFirst = "Take a sausage off the stack first";
 
         // Auto keeps the stack as close to square as it can. 1 is a single-file tower.
         // After the widths comes Tree, layers that cross and narrow toward the top, then
@@ -120,7 +122,7 @@ namespace Dizzy.FirewoodBundle
         {
             ShipItem item = FirewoodPieces.AsShip(component);
             BundleKind kind = FirewoodPieces.KindOf(item);
-            return (kind == BundleKind.Sausage && CountOf(item) > 1) || kind == BundleKind.HangingSausage;
+            return (kind == BundleKind.Sausage && CountOf(item) > 1) || (kind != null && kind.Hangs);
         }
 
         // Smoked or dried food barely spoils. Rotten food is past saving.
@@ -129,6 +131,8 @@ namespace Dizzy.FirewoodBundle
             FoodState food = item != null ? item.GetComponent<FoodState>() : null;
             if (food == null || food.spoiled > 0.9f)
                 return false;
+            if (IsBanana(item))
+                return food.dried >= 0.99f;
             return food.smoked >= 0.99f || food.dried >= 0.99f;
         }
 
@@ -164,7 +168,8 @@ namespace Dizzy.FirewoodBundle
         // A stack is labelled by count and kind alone, e.g. "76 Smoked Sausages".
         internal static string Label(ShipItem item, int count)
         {
-            string words = KindWord(item) + " sausages";
+            BundleKind kind = FirewoodPieces.KindOf(item);
+            string words = KindWord(item) + " " + (kind != null ? kind.Plural : "sausages");
             var label = new System.Text.StringBuilder(count + " ");
             bool start = true;
             for (int i = 0; i < words.Length; i++)
@@ -180,6 +185,12 @@ namespace Dizzy.FirewoodBundle
         // Why these two cannot stack, or null when they can.
         internal static string Rejection(ShipItem held, ShipItem target)
         {
+            if (IsBanana(held) && IsBanana(target))
+            {
+                if (!IsPreserved(held) || !IsPreserved(target))
+                    return FreshBanana;
+                return !IsWhole(held) || !IsWhole(target) ? EatenBanana : null;
+            }
             if (!IsSausage(held) || !IsSausage(target))
                 return null;
             if (!IsPreserved(held) || !IsPreserved(target))
@@ -195,6 +206,23 @@ namespace Dizzy.FirewoodBundle
         {
             BundleKind kind = FirewoodPieces.KindOf(item);
             return kind == BundleKind.Sausage || kind == BundleKind.HangingSausage;
+        }
+
+        internal static bool IsBanana(ShipItem item)
+        {
+            BundleKind kind = FirewoodPieces.KindOf(item);
+            return kind == BundleKind.Banana || kind == BundleKind.HangingBanana;
+        }
+
+        // Why this loose piece cannot start a hanging bundle, or null.
+        internal static string HangRefusal(ShipItem item)
+        {
+            bool banana = IsBanana(item);
+            if (!IsPreserved(item))
+                return banana ? FreshBanana : Unpreserved;
+            if (!IsWhole(item))
+                return banana ? EatenBanana : Eaten;
+            return null;
         }
 
         // The stack takes the worst of both: the most spoiled, the least dried, smoked

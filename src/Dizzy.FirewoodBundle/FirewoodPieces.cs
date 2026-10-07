@@ -143,7 +143,7 @@ namespace Dizzy.FirewoodBundle
         internal static string LookText(ShipItem item, int count)
         {
             BundleKind kind = KindOf(item);
-            if (kind == BundleKind.Sausage || kind == BundleKind.HangingSausage)
+            if (kind != null && kind.IsFood)
                 return SausageStacks.Label(item, count);
             return kind != null ? kind.LookText(count) : "";
         }
@@ -171,11 +171,15 @@ namespace Dizzy.FirewoodBundle
         {
             BundleKind kind = KindOf(held);
             BundleKind targetKind = KindOf(target);
-            // Sausages in hand also go onto a hanging bundle.
-            bool onHook = targetKind == BundleKind.HangingSausage && SausageStacks.IsSausage(held);
+            // Sausages or bananas in hand also go onto a hanging bundle of their own kind.
+            bool onHook = targetKind != null && kind != null && targetKind.Hangs && targetKind.Loose == kind.Loose;
+            // A bunch in hand picks up loose bananas of its own.
+            bool intoHand = targetKind != null && kind != null && kind.Hangs && targetKind == kind.Loose && !targetKind.Bundles;
             if (kind == null || !kind.IsEnabled || held == target)
                 return false;
-            if (targetKind != kind && !onHook)
+            if (targetKind != kind && !onHook && !intoHand)
+                return false;
+            if (!onHook && !kind.Bundles)
                 return false;
             if (onHook && !targetKind.IsEnabled)
                 return false;
@@ -188,7 +192,7 @@ namespace Dizzy.FirewoodBundle
             if (body != null)
             {
                 // Hanging marks the body as held in place, the same flag a stove uses.
-                if (body.inStove && targetKind != BundleKind.HangingSausage)
+                if (body.inStove && !targetKind.Hangs)
                     return false;
                 if (body.GetCurrentInventorySlot() != null)
                     return false;
@@ -328,7 +332,7 @@ namespace Dizzy.FirewoodBundle
             }
 
             // A hanging bundle stays on its hook, even with one sausage, and takes the held ones.
-            if (CountOf(target) > 1 || target.nailed || KindOf(target) == BundleKind.HangingSausage)
+            if (CountOf(target) > 1 || target.nailed || KindOf(target).Hangs)
                 return AddHeldToPile(held, target, pointer, count);
 
             int previousCount = CountOf(held);
@@ -422,10 +426,12 @@ namespace Dizzy.FirewoodBundle
             BundleKind kind = KindOf(pile);
             int heldCount = CountOf(held);
             int pileCount = CountOf(pile);
-            bool keeps = pileCount > 1 || pile.nailed || kind == BundleKind.HangingSausage;
-            if (kind == null || heldCount < 1 || !keeps)
+            if (kind == null)
                 return 0;
-            if (heldCount <= 1 && kind != BundleKind.HangingSausage)
+            bool keeps = pileCount > 1 || pile.nailed || kind.Hangs;
+            if (heldCount < 1 || !keeps)
+                return 0;
+            if (heldCount <= 1 && !kind.Hangs)
                 return 0;
             if (heldCount + pileCount <= kind.Limit)
                 return 0;
@@ -524,7 +530,8 @@ namespace Dizzy.FirewoodBundle
         // The bundle stays where it is. A held stack only grows when the click hits another piece.
         internal static bool TrySplit(ShipItem bundle)
         {
-            if (KindOf(bundle) == BundleKind.HangingSausage)
+            BundleKind bundleKind = KindOf(bundle);
+            if (bundleKind != null && bundleKind.Hangs)
                 return TakeHanging(bundle);
             if (!IsActive(bundle) || CountOf(bundle) <= 1)
                 return false;
@@ -759,18 +766,106 @@ namespace Dizzy.FirewoodBundle
                 if (pointer == null || pointer.GetHeldItem() != null)
                     continue;
                 ShipItem piece = CrateSlots.ItemOnSlot(CrateSlots.PointedButton(pointer));
-                if (!CanGatherPiece(piece))
-                    continue;
-                Gather(piece, pointer);
-                return;
+                if (CanGatherPiece(piece))
+                {
+                    Gather(piece, pointer);
+                    return;
+                }
+                ShipItem ground = pointer.GetPointedAtItem();
+                if (CanGatherGround(ground))
+                {
+                    GatherGround(ground, pointer);
+                    return;
+                }
             }
+        }
+
+        // G on a loose dried banana lying out in the world gathers the loose dried
+        // bananas near it into a bunch in hand.
+        internal const float GroundGatherRadius = 3f;
+
+        internal static bool CanGatherGround(ShipItem piece)
+        {
+            BundleKind kind = KindOf(piece);
+            if (kind != BundleKind.Banana || !kind.Hung.IsEnabled || !IsLoose(piece))
+                return false;
+            if (SausageStacks.HangRefusal(piece) != null)
+                return false;
+            return LooseNear(piece).Count >= 1;
+        }
+
+        private static bool IsLoose(ShipItem item)
+        {
+            if (item == null || !item.sold || item.held != null || item.unclickable || CountOf(item) > 1)
+                return false;
+            if (CrateSlots.OpenCrateHolding(item) != null)
+                return false;
+            ItemRigidbody body = item.itemRigidbodyC;
+            if (body != null && (body.inStove || body.GetCurrentInventorySlot() != null || body.GetCurrentBox() != null))
+                return false;
+            return true;
+        }
+
+        private static List<ShipItem> LooseNear(ShipItem piece)
+        {
+            var loose = new List<ShipItem>();
+            BundleKind kind = KindOf(piece);
+            ShipItemFood[] foods = Object.FindObjectsOfType<ShipItemFood>();
+            float reach = GroundGatherRadius * GroundGatherRadius;
+            for (int i = 0; i < foods.Length; i++)
+            {
+                ShipItem item = foods[i];
+                if (item == piece || KindOf(item) != kind || !IsLoose(item))
+                    continue;
+                if ((item.transform.position - piece.transform.position).sqrMagnitude > reach)
+                    continue;
+                if (SausageStacks.Rejection(piece, item) != null)
+                    continue;
+                loose.Add(item);
+            }
+
+            loose.Sort((a, b) => (b.transform.position - piece.transform.position).sqrMagnitude
+                .CompareTo((a.transform.position - piece.transform.position).sqrMagnitude));
+            return loose;
+        }
+
+        private static void GatherGround(ShipItem piece, GoPointer pointer)
+        {
+            BundleKind kind = KindOf(piece);
+            List<ShipItem> loose = LooseNear(piece);
+            int size = Mathf.Min(kind.Limit, loose.Count + 1);
+            if (size < 2)
+                return;
+
+            // The nearest ones are last in the list, so they go first.
+            for (int extra = 1; extra < size; extra++)
+            {
+                ShipItem other = loose[loose.Count - extra];
+                SausageStacks.MergeFood(piece, other, extra, 1);
+                Consume(other);
+            }
+
+            ShipItem template = PrefabOf(piece);
+            float distance = template != null ? template.holdDistance : 0.4f;
+            float height = template != null ? template.holdHeight : 0f;
+            piece.transform.position = pointer.transform.position + pointer.transform.forward * distance + pointer.transform.up * height;
+            piece.transform.rotation = pointer.transform.rotation;
+            pointer.PickUpItem(piece);
+
+            SausageStacks.MakeHanging(piece);
+            WriteCount(piece, size);
+            FirewoodBundleBuilder.Apply(piece);
+            Plugin.Log.LogInfo("Gathered a " + kind.Hung.BundleName + " of " + size + " " + kind.Plural + " from nearby.");
         }
 
         internal static bool CanGatherPiece(ShipItem piece)
         {
-            if (!IsActive(piece) || CountOf(piece) > 1)
+            if (!IsActive(piece) || CountOf(piece) > 1 || KindOf(piece).Hangs)
                 return false;
-            if (KindOf(piece) == BundleKind.Sausage && (!SausageStacks.IsPreserved(piece) || !SausageStacks.IsWhole(piece)))
+            // A banana gathers into a bunch, so the bunch has to be turned on too.
+            if (!KindOf(piece).Bundles && !KindOf(piece).Hung.IsEnabled)
+                return false;
+            if (KindOf(piece).IsFood && SausageStacks.HangRefusal(piece) != null)
                 return false;
             CrateInventory inventory = CrateSlots.OpenCrateHolding(piece);
             return inventory != null && LoosePieces(inventory, KindOf(piece), piece).Count >= 1;
@@ -823,6 +918,12 @@ namespace Dizzy.FirewoodBundle
             piece.transform.rotation = pointer.transform.rotation;
             pointer.PickUpItem(piece);
 
+            // Bananas only come as a bunch, ready to hang on a lamp hook.
+            if (!kind.Bundles)
+            {
+                SausageStacks.MakeHanging(piece);
+                kind = kind.Hung;
+            }
             WriteCount(piece, size);
             FirewoodBundleBuilder.Apply(piece);
             CrateSlots.Refresh(inventory);

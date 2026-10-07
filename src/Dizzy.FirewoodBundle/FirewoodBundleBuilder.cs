@@ -101,7 +101,8 @@ namespace Dizzy.FirewoodBundle
         {
             if (item == null)
                 return;
-            bool hanging = FirewoodPieces.KindOf(item) == BundleKind.HangingSausage;
+            BundleKind kind = FirewoodPieces.KindOf(item);
+            bool hanging = kind != null && kind.Hangs;
             if (!hanging && FirewoodPieces.CountOf(item) <= 1)
                 return;
 
@@ -160,6 +161,11 @@ namespace Dizzy.FirewoodBundle
 
         private static void ApplyNow(ShipItem item)
         {
+            if (FirewoodPieces.KindOf(item) == BundleKind.HangingBanana)
+            {
+                ApplyBananaBunch(item);
+                return;
+            }
             if (FirewoodPieces.KindOf(item) == BundleKind.HangingSausage)
             {
                 ApplyHanging(item);
@@ -661,8 +667,111 @@ namespace Dizzy.FirewoodBundle
             QuietHull(item);
         }
 
+        // A banana bunch hangs like one on the tree turned upside down: a stalk drops
+        // from the hook, and the bananas grow from it in hands, rings of Hand Size at one
+        // height. Each banana's stem meets the stalk and the banana points down and out,
+        // curving back in toward the stalk at its tip. A hand that is not full closes up.
+        private static void ApplyBananaBunch(ShipItem item)
+        {
+            MeshRenderer source = item.GetComponent<MeshRenderer>();
+            MeshFilter filter = item.GetComponent<MeshFilter>();
+            Mesh mesh = filter != null ? filter.sharedMesh : null;
+            float cross;
+            int longAxis;
+            if (mesh == null || source == null || !FirewoodPieces.TryMeasure(item, out cross, out longAxis))
+                return;
+
+            int count = FirewoodPieces.CountOf(item);
+            int upAxis = longAxis == StackUpAxis ? (StackUpAxis + 1) % 3 : StackUpAxis;
+            int sideAxis = 3 - longAxis - upAxis;
+            Vector3 up = Vector3.zero;
+            up[upAxis] = 1f;
+            Vector3 along = Vector3.zero;
+            along[longAxis] = 1f;
+            Vector3 sideA = Vector3.zero;
+            sideA[sideAxis] = 1f;
+            Vector3 sideB = Vector3.zero;
+            sideB[longAxis] = 1f;
+            Bounds stick = mesh.bounds;
+            float thickness = stick.size[sideAxis];
+            float length = stick.size[longAxis];
+            int perHand = FirewoodBundleConfig.BananaHandSize;
+            float drop = length * 0.3f * FirewoodBundleConfig.BananaHandDrop;
+            float splay = FirewoodBundleConfig.BananaSplay * Mathf.Deg2Rad;
+            // A small bunch hangs close together; it opens out as hands are added, so a
+            // lone hand does not spread flat like a flower.
+            int hands = Mathf.Max(1, Mathf.CeilToInt(count / (float)perHand));
+            splay *= Mathf.Lerp(0.45f, 1f, Mathf.Clamp01((hands - 1) / 2f));
+            float stalkRadius = Mathf.Max(0.006f, thickness * 0.14f);
+            float stemWidth = thickness * 0.4f;
+            SaveablePrefab save = item.GetComponent<SaveablePrefab>();
+            int seed = save != null ? save.instanceId : 0;
+
+            ClearSticks(item);
+            ClearHull(item);
+            source.enabled = false;
+            Material[] materials = source.sharedMaterials;
+            Material stalk = StringMaterial(BundleKind.Firewood, 0);
+            var renderers = new List<Renderer>();
+            var centers = new List<Vector3>(count);
+            var turns = new List<Quaternion>(count);
+            // The game's banana has its thin stem at the high end of its long axis and
+            // curves toward its own up, so that side is the inside of the curve.
+            Vector3 stemEnd = stick.center;
+            stemEnd[longAxis] = stick.max[longAxis];
+            Quaternion meshFrame = Quaternion.LookRotation(along, up);
+            float lowest = 0f;
+            float widest = 0f;
+
+            for (int i = 0; i < count; i++)
+            {
+                int hand = i / perHand;
+                int place = i % perHand;
+                int inHand = Mathf.Min(perHand, count - hand * perHand);
+                float knot = -(HangTop + stalkRadius * 2f + hand * drop);
+                float ring = stalkRadius + (inHand > 1 ? Mathf.Max(0f, stemWidth / (2f * Mathf.Sin(Mathf.PI / inHand)) - stalkRadius) : 0f);
+                float angle = (place + (hand % 2) * 0.5f) * Mathf.PI * 2f / inHand;
+                angle += (PileHash(seed, i, 10) - 0.5f) * 0.25f * Mathf.PI * 2f / inHand;
+                Vector3 outward = sideA * Mathf.Cos(angle) + sideB * Mathf.Sin(angle);
+                // Each hand down points a little steeper, so the bunch tapers to its tip.
+                float handSplay = splay / (1f + 0.3f * hand);
+                float tilt = Mathf.Clamp(handSplay + (PileHash(seed, i, 11) - 0.5f) * 8f * Mathf.Deg2Rad, 0f, 85f * Mathf.Deg2Rad);
+                // Points down and out; the inside of its curve faces down and in.
+                Vector3 pointing = -up * Mathf.Cos(tilt) + outward * Mathf.Sin(tilt);
+                Vector3 inside = -up * Mathf.Sin(tilt) - outward * Mathf.Cos(tilt);
+                Quaternion twist = Quaternion.AngleAxis((PileHash(seed, i, 12) - 0.5f) * 20f, pointing);
+                Quaternion turn = twist * Quaternion.LookRotation(-pointing, inside) * Quaternion.Inverse(meshFrame);
+                Vector3 stem = outward * ring + up * knot;
+                Vector3 place3D = stem - turn * stemEnd;
+                renderers.Add(CreateStick(item, mesh, materials, place3D, turn, source));
+                centers.Add(place3D);
+                turns.Add(turn);
+                lowest = Mathf.Min(lowest, knot);
+                widest = Mathf.Max(widest, ring + length * Mathf.Sin(tilt));
+            }
+
+            if (stalk != null)
+                renderers.Add(CreateCordPiece(item, stalk, Vector3.zero, up * (lowest - stalkRadius * 3f), sideAxis, stalkRadius));
+            IncludeInLod(item, renderers);
+
+            item.lookText = FirewoodPieces.LookText(item, count);
+            item.description = "";
+            item.big = false;
+            ShipItem prefab = FirewoodPieces.PrefabOf(item);
+            if (prefab != null)
+                item.holdDistance = prefab.holdDistance + widest * 0.5f;
+            ApplyMass(item, count);
+            Bounds bundle = BundleBounds(centers, mesh, turns);
+            bundle.Encapsulate(Vector3.zero);
+            bundle.Expand(0.01f);
+            FitBox(item, bundle);
+            if (item.GetComponent<HangableItem>() == null)
+                item.gameObject.AddComponent<HangableItem>();
+            QuietHull(item);
+        }
+
         // One straight piece of string. The frame axis is the one most across it.
-        private static Renderer CreateCordPiece(ShipItem item, Material material, Vector3 from, Vector3 to, int frameAxis)
+        private static Renderer CreateCordPiece(ShipItem item, Material material, Vector3 from, Vector3 to, int frameAxis, float radius = HangCord)
         {
             Vector3 direction = to - from;
             if (direction.sqrMagnitude < 0.000001f)
@@ -679,7 +788,7 @@ namespace Dizzy.FirewoodBundle
                 }
             }
 
-            Mesh mesh = CordMesh(new List<Vector3> { from, to }, best, HangCord, false, StringName);
+            Mesh mesh = CordMesh(new List<Vector3> { from, to }, best, radius, false, StringName);
             if (mesh == null)
                 return null;
             var piece = new GameObject(StringName);
@@ -819,7 +928,8 @@ namespace Dizzy.FirewoodBundle
         {
             if (item == null)
                 return;
-            if (FirewoodPieces.CountOf(item) <= 1 && FirewoodPieces.KindOf(item) != BundleKind.HangingSausage)
+            BundleKind kind = FirewoodPieces.KindOf(item);
+            if (FirewoodPieces.CountOf(item) <= 1 && (kind == null || !kind.Hangs))
                 return;
 
             Outline root = item.GetComponent<Outline>();

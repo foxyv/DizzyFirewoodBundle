@@ -23,6 +23,11 @@ namespace Dizzy.FirewoodBundle
         internal static ConfigEntry<float> BunchDropAmount;
         internal static ConfigEntry<float> HangStringAmount;
         internal static ConfigEntry<float> HangFlareAmount;
+        internal static ConfigEntry<bool> BananasEnabled;
+        internal static ConfigEntry<int> MaxBananas;
+        internal static ConfigEntry<int> BananaHandSizeAmount;
+        internal static ConfigEntry<float> BananaHandDropAmount;
+        internal static ConfigEntry<float> BananaSplayAmount;
         internal static ConfigEntry<bool> HooksEnabled;
         internal static ConfigEntry<int> MaxHooks;
         internal static ConfigEntry<float> HookMessiness;
@@ -138,6 +143,31 @@ namespace Dizzy.FirewoodBundle
         internal static float HangFlare
         {
             get { return HangFlareAmount != null ? HangFlareAmount.Value : 0.75f; }
+        }
+
+        internal static bool BananasAreEnabled
+        {
+            get { return BananasEnabled == null || BananasEnabled.Value; }
+        }
+
+        internal static int BananaLimit
+        {
+            get { return MaxBananas != null ? MaxBananas.Value : 45; }
+        }
+
+        internal static int BananaHandSize
+        {
+            get { return BananaHandSizeAmount != null ? Mathf.Max(2, BananaHandSizeAmount.Value) : 8; }
+        }
+
+        internal static float BananaHandDrop
+        {
+            get { return BananaHandDropAmount != null ? BananaHandDropAmount.Value : 1f; }
+        }
+
+        internal static float BananaSplay
+        {
+            get { return BananaSplayAmount != null ? BananaSplayAmount.Value : 35f; }
         }
 
         internal static bool HooksAreEnabled
@@ -301,6 +331,44 @@ namespace Dizzy.FirewoodBundle
                 new ConfigDescription(
                     "How far each sausage leans out from its tie. 1 leans just enough to clear the bunch below. 0 hangs them straight down.",
                     new AcceptableValueRange<float>(0f, 3f)));
+
+            BananasEnabled = config.Bind(
+                "Banana Bunches",
+                "Enabled",
+                true,
+                "Click an empty lamp hook with a dried banana to hang it. Right-click the bunch with more dried bananas to add them; they grow from a stalk in hands, like a bunch on the tree turned upside down. Right-click it with empty hands to take one off.");
+
+            MaxBananas = config.Bind(
+                "Banana Bunches",
+                "MaxBananas",
+                45,
+                new ConfigDescription(
+                    "Most bananas one hook can hold, up to 999.",
+                    new AcceptableValueRange<int>(1, FirewoodPieces.MaxCount)));
+
+            BananaHandSizeAmount = config.Bind(
+                "Banana Bunches",
+                "Hand Size",
+                8,
+                new ConfigDescription(
+                    "How many bananas grow around the stalk at one height before a new hand starts lower down.",
+                    new AcceptableValueRange<int>(2, 16)));
+
+            BananaHandDropAmount = config.Bind(
+                "Banana Bunches",
+                "Hand Drop",
+                1f,
+                new ConfigDescription(
+                    "Multiplier for how much lower each new hand grows than the one above it.",
+                    new AcceptableValueRange<float>(0.3f, 3f)));
+
+            BananaSplayAmount = config.Bind(
+                "Banana Bunches",
+                "Splay",
+                35f,
+                new ConfigDescription(
+                    "Degrees each banana points out from straight down. 0 hangs them straight down.",
+                    new AcceptableValueRange<float>(0f, 80f)));
 
             HooksEnabled = config.Bind(
                 "Hooks",
