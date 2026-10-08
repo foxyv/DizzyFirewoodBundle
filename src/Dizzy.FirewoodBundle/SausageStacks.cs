@@ -24,6 +24,10 @@ namespace Dizzy.FirewoodBundle
         internal const string FreshApple = "Only dried apples go in a bag";
         internal const string EatenApple = "Cannot bag eaten apples";
         internal const string OrangeName = "orange";
+        internal const string DateName = "date";
+        internal const int DatePrefab = 42;
+        internal const string FreshDate = "Only dried dates can hang";
+        internal const string EatenDate = "Cannot hang eaten dates";
         internal const string FreshOrange = "Only dried oranges go in a bag";
         internal const string EatenOrange = "Cannot bag eaten oranges";
         internal const string Unpreserved = "Cannot stack unpreserved sausages";
@@ -147,7 +151,7 @@ namespace Dizzy.FirewoodBundle
         {
             ShipItem item = FirewoodPieces.AsShip(component);
             BundleKind kind = FirewoodPieces.KindOf(item);
-            return (kind == BundleKind.Sausage && CountOf(item) > 1) || (kind != null && kind.Hangs);
+            return (kind != null && kind.Stacks && CountOf(item) > 1) || (kind != null && kind.Hangs);
         }
 
         // Smoked or dried food barely spoils. Rotten food is past saving.
@@ -156,7 +160,7 @@ namespace Dizzy.FirewoodBundle
             FoodState food = item != null ? item.GetComponent<FoodState>() : null;
             if (food == null || food.spoiled > 0.9f)
                 return false;
-            if (IsBanana(item) || IsApple(item) || IsOrange(item))
+            if (IsBanana(item) || IsApple(item) || IsOrange(item) || IsDate(item))
                 return food.dried >= 0.99f;
             return food.smoked >= 0.99f || food.dried >= 0.99f;
         }
@@ -210,6 +214,12 @@ namespace Dizzy.FirewoodBundle
         // Why these two cannot stack, or null when they can.
         internal static string Rejection(ShipItem held, ShipItem target)
         {
+            if (IsDate(held) && IsDate(target))
+            {
+                if (!IsPreserved(held) || !IsPreserved(target))
+                    return FreshDate;
+                return !IsWhole(held) || !IsWhole(target) ? EatenDate : null;
+            }
             if (IsOrange(held) && IsOrange(target))
             {
                 if (!IsPreserved(held) || !IsPreserved(target))
@@ -257,6 +267,12 @@ namespace Dizzy.FirewoodBundle
             return kind == BundleKind.Apple || kind == BundleKind.AppleBag;
         }
 
+        internal static bool IsDate(ShipItem item)
+        {
+            BundleKind kind = FirewoodPieces.KindOf(item);
+            return kind == BundleKind.Date || kind == BundleKind.HangingDate;
+        }
+
         internal static bool IsOrange(ShipItem item)
         {
             BundleKind kind = FirewoodPieces.KindOf(item);
@@ -269,10 +285,11 @@ namespace Dizzy.FirewoodBundle
             bool banana = IsBanana(item);
             bool apple = IsApple(item);
             bool orange = IsOrange(item);
+            bool date = IsDate(item);
             if (!IsPreserved(item))
-                return orange ? FreshOrange : apple ? FreshApple : banana ? FreshBanana : Unpreserved;
+                return date ? FreshDate : orange ? FreshOrange : apple ? FreshApple : banana ? FreshBanana : Unpreserved;
             if (!IsWhole(item))
-                return orange ? EatenOrange : apple ? EatenApple : banana ? EatenBanana : Eaten;
+                return date ? EatenDate : orange ? EatenOrange : apple ? EatenApple : banana ? EatenBanana : Eaten;
             return null;
         }
 
@@ -346,7 +363,7 @@ namespace Dizzy.FirewoodBundle
                 ShipItem stack = FirewoodPieces.AsShip(pointer.GetHeldItem());
                 if (stack == null)
                     stack = pointer.GetPointedAtItem();
-                if (!IsStack(stack) || IsHanging(stack))
+                if (!IsStack(stack) || IsHanging(stack) || FirewoodPieces.KindOf(stack) != BundleKind.Sausage)
                     continue;
 
                 StackState state = stack.GetComponent<StackState>();

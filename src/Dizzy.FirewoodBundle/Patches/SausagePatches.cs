@@ -67,7 +67,7 @@ namespace Dizzy.FirewoodBundle
         {
             if (!SausageStacks.IsStack(item) || ___controlsText == null)
                 return;
-            ___controlsText.text = SausageStacks.IsHanging(item) ? FirewoodPieces.ColorPrompt(FirewoodPieces.AsShip(item)) : SausageStacks.WidthPrompt(FirewoodPieces.AsShip(item));
+            ___controlsText.text = FirewoodPieces.ColorPrompt(FirewoodPieces.AsShip(item));
             if (___mouseRIcon != null)
                 ___mouseRIcon.enabled = false;
             if (___textRIcon != null)
