@@ -10,7 +10,7 @@ namespace Dizzy.FirewoodBundle
     public class Plugin : BaseUnityPlugin
     {
         public const string PluginGuid = "com.dizzy.sailwind.firewoodbundle";
-        public const string PluginName = "Dizzy Firewood Bundle";
+        public const string PluginName = "Dizzy Bundle Up";
         public const string PluginVersion = "0.10.0";
 
         internal static ManualLogSource Log;
@@ -32,7 +32,7 @@ namespace Dizzy.FirewoodBundle
             }
             catch (System.Exception ex)
             {
-                Log.LogError("Dizzy Firewood Bundle failed to patch Sailwind: " + ex);
+                Log.LogError(PluginName + " failed to patch Sailwind: " + ex);
             }
 
             Log.LogInfo(

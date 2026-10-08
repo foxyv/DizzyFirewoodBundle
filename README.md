@@ -1,4 +1,6 @@
-# Dizzy Firewood Bundle
+# Dizzy Bundle Up
+
+*Formerly Dizzy Firewood Bundle.* The plugin folder, DLL and config file keep their old `Dizzy.FirewoodBundle` / `com.dizzy.sailwind.firewoodbundle` names, so updating is a drop-in replacement.
 
 A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepInEx 5](https://thunderstore.io/c/sailwind/p/BepInEx/BepInExPack/) that bundles loose firewood, candles, sausages, bananas, apples, oranges, dates and fishing hooks together.
 

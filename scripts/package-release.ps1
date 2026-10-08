@@ -1,4 +1,4 @@
-# Packages Dizzy Firewood Bundle for GitHub Releases.
+# Packages Dizzy Bundle Up for GitHub Releases.
 # Usage: .\scripts\package-release.ps1 [-Version 0.10.0]
 
 param(

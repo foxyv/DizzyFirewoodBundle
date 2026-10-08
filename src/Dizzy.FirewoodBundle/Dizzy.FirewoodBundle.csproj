@@ -2,7 +2,7 @@
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
     <AssemblyName>Dizzy.FirewoodBundle</AssemblyName>
-    <Product>Dizzy Firewood Bundle</Product>
+    <Product>Dizzy Bundle Up</Product>
     <Version>0.10.0</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
