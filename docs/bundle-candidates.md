@@ -1,6 +1,6 @@
 # Bundle candidates
 
-Items in Sailwind that Dizzy Firewood Bundle might bundle, stack, bag or hang. A checked box means the mod already handles it.
+Items in Sailwind that Dizzy Bundle Up might bundle, stack, bag or hang. A checked box means the mod already handles it.
 
 The number is the item's prefab ID in the game. Food comes from the game's own food script (`ShipItemFood`). Slices are the pieces a knife cuts off whole food.
 
