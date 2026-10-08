@@ -1,6 +1,6 @@
 # Dizzy Firewood Bundle
 
-A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepInEx 5](https://thunderstore.io/c/sailwind/p/BepInEx/BepInExPack/) that bundles loose firewood, candles, sausages, bananas, apples, oranges and fishing hooks together.
+A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepInEx 5](https://thunderstore.io/c/sailwind/p/BepInEx/BepInExPack/) that bundles loose firewood, candles, sausages, bananas, apples, oranges, dates and fishing hooks together.
 
 ## Features
 
@@ -18,7 +18,7 @@ A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepI
 
 ### Tie colors
 - Hold or look at a firewood or candle bundle and press **\\** to change its tie color.
-- Candles: red, blue, green, gold, white, black, purple, pink and orange. Firewood: its natural brown, then the same nine. Apple and orange bags: the same nine, starting from black.
+- Candles: red, blue, green, gold, white, black, purple, pink, orange, tan and brown. Firewood: its natural brown, then the same colors up to tan. Apple and orange bags: the same eleven, starting from black.
 
 ### Sausages
 - Hold a smoked or dried sausage and right-click another of the same kind to stack them.
@@ -58,6 +58,12 @@ A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepI
 - Dried oranges go in net bags exactly like apples: right-click two together, or click an empty lamp hook with one.
 - Add, take out, hang, recolor and press **G** on oranges the same way. Apples and oranges never share a bag.
 - A bag keeps at least three rows of fruit, and stands upright when set down.
+
+### Date racks
+- A date in Sailwind is a skewer of three dates. Dried skewers hang from a little iron rack under a lamp hook.
+- Click an empty lamp hook with a dried date, or right-click one dried date onto another to make a rack in hand.
+- Each layer holds 16 skewers: an outer ring of 12 and an inner ring of 4. Taking skewers off leaves gaps, and the ring tips toward the side that still has dates.
+- Right-click the rack to add or take a date, or hold the rack and right-click loose dried dates. Press **G** on dried dates in a crate or lying nearby to pick up a rack.
 
 ### Fishing hooks
 - Hold a fishing hook and right-click another hook to string them on a line.
@@ -110,6 +116,9 @@ Settings are in `BepInEx\config\com.dizzy.sailwind.firewoodbundle.cfg`. The file
 | Orange Bags | MaxOranges | 24 | Most oranges in a bag, up to 999. |
 | Orange Bags | Layer Size | 7 | Oranges in the bottom layer. Each layer above holds one fewer. |
 | Fruit Bags | Net Thickness | 1.5 | How thick the strings of apple and orange bag nets are. |
+| Dates | Enabled | true | Turns date racks on or off. |
+| Dates | MaxDates | 32 | Most date skewers on one rack, up to 999. |
+| Dates | Layer Spacing | 2 | How far apart a rack's layers hang. |
 | Hooks | Enabled | true | Turns hook lines on or off. |
 | Hooks | MaxHooks | 20 | Most hooks on one line. |
 | Hooks | Hook Messiness | 1 | How far each hook is shifted and tilted off a neat line. |
@@ -140,7 +149,7 @@ dotnet build src\Dizzy.FirewoodBundle\Dizzy.FirewoodBundle.csproj -c Release -p:
 To package a release zip into `dist\`, run:
 
 ```powershell
-.\scripts\package-release.ps1 -Version 0.9.0
+.\scripts\package-release.ps1 -Version 0.10.0
 ```
 
 ## License

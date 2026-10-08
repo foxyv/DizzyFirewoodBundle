@@ -35,6 +35,9 @@ namespace Dizzy.FirewoodBundle
         internal static ConfigEntry<bool> OrangesEnabled;
         internal static ConfigEntry<int> MaxOranges;
         internal static ConfigEntry<int> OrangeLayerSizeAmount;
+        internal static ConfigEntry<bool> DatesEnabled;
+        internal static ConfigEntry<int> MaxDates;
+        internal static ConfigEntry<float> DateLayerSpacingAmount;
         internal static ConfigEntry<bool> HooksEnabled;
         internal static ConfigEntry<int> MaxHooks;
         internal static ConfigEntry<float> HookMessiness;
@@ -210,6 +213,21 @@ namespace Dizzy.FirewoodBundle
         internal static int OrangeLayerSize
         {
             get { return OrangeLayerSizeAmount != null ? Mathf.Max(2, OrangeLayerSizeAmount.Value) : 7; }
+        }
+
+        internal static bool DatesAreEnabled
+        {
+            get { return DatesEnabled == null || DatesEnabled.Value; }
+        }
+
+        internal static float DateLayerSpacing
+        {
+            get { return DateLayerSpacingAmount != null ? DateLayerSpacingAmount.Value : 2f; }
+        }
+
+        internal static int DateLimit
+        {
+            get { return MaxDates != null ? MaxDates.Value : 32; }
         }
 
         internal static bool HooksAreEnabled
@@ -463,6 +481,28 @@ namespace Dizzy.FirewoodBundle
                 new ConfigDescription(
                     "How many oranges sit in the bottom layer of a bag. Each layer above holds one fewer.",
                     new AcceptableValueRange<int>(2, 12)));
+
+            DatesEnabled = config.Bind(
+                "Dates",
+                "Enabled",
+                true,
+                "Click an empty lamp hook with a dried date skewer to hang it from a little iron rack. Right-click the rack with more dried dates to add them, or with empty hands to take one off.");
+
+            MaxDates = config.Bind(
+                "Dates",
+                "MaxDates",
+                32,
+                new ConfigDescription(
+                    "Most date skewers one rack can hold, up to 999. Each layer holds 16.",
+                    new AcceptableValueRange<int>(1, FirewoodPieces.MaxCount)));
+
+            DateLayerSpacingAmount = config.Bind(
+                "Dates",
+                "Layer Spacing",
+                2f,
+                new ConfigDescription(
+                    "Multiplier for how far apart the layers of a date rack hang. Higher spaces them further apart.",
+                    new AcceptableValueRange<float>(0.3f, 6f)));
 
             HooksEnabled = config.Bind(
                 "Hooks",

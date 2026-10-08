@@ -40,6 +40,14 @@ namespace Dizzy.FirewoodBundle
         }
 
         private const float AppleTie = 0.07f;
+        // The iron wire of a hanging date rack.
+        private const float RackWire = 0.003f;
+        private const int RackOuter = 12;
+        private const int RackInner = 4;
+        private const float RackInnerShare = 0.45f;
+        // How far a rack ring tips per unit of imbalance, in degrees. A half-full ring is
+        // about a third out of balance, so it tips about 8 degrees.
+        private const float RackTip = 25f;
         private const float AppleNeck = 0.012f;
         private const int PileTries = 8;
 
@@ -181,7 +189,7 @@ namespace Dizzy.FirewoodBundle
                 ApplyAppleBag(item);
                 return;
             }
-            if (FirewoodPieces.KindOf(item) == BundleKind.HangingSausage)
+            if (FirewoodPieces.KindOf(item) == BundleKind.HangingSausage || FirewoodPieces.KindOf(item) == BundleKind.HangingDate)
             {
                 ApplyHanging(item);
                 return;
@@ -225,7 +233,7 @@ namespace Dizzy.FirewoodBundle
                 for (int i = 0; i < centers.Count; i++)
                     renderers.Add(CreateStick(item, mesh, materials, centers[i], turns != null ? turns[i] : Quaternion.identity, source));
                 // An Auto sausage stack is a neat block, so it gets a cord like firewood.
-                bool tiedStack = kind == BundleKind.Sausage && SausageStacks.WidthOf(item) == 0;
+                bool tiedStack = kind != null && kind.Stacks && SausageStacks.WidthOf(item) == 0;
                 int tieUp = tiedStack ? (longAxis == StackUpAxis ? (StackUpAxis + 1) % 3 : StackUpAxis) : -1;
                 if (kind == null || kind.Tie != TieStyle.None || tiedStack)
                 {
@@ -589,8 +597,11 @@ namespace Dizzy.FirewoodBundle
                 return;
 
             int count = FirewoodPieces.CountOf(item);
-            int upAxis = longAxis == StackUpAxis ? (StackUpAxis + 1) % 3 : StackUpAxis;
-            int sideAxis = 3 - longAxis - upAxis;
+            // The hook keeps the item's own up pointing up, so that is the way down the
+            // strings, even for a piece modelled standing on end like a date skewer.
+            int upAxis = StackUpAxis;
+            int sideAxis = longAxis == upAxis ? (upAxis + 1) % 3 : 3 - longAxis - upAxis;
+            int otherAxis = longAxis == upAxis ? (upAxis + 2) % 3 : longAxis;
             Vector3 up = Vector3.zero;
             up[upAxis] = 1f;
             Vector3 along = Vector3.zero;
@@ -598,12 +609,15 @@ namespace Dizzy.FirewoodBundle
             Vector3 sideA = Vector3.zero;
             sideA[sideAxis] = 1f;
             Vector3 sideB = Vector3.zero;
-            sideB[longAxis] = 1f;
+            sideB[otherAxis] = 1f;
             Bounds stick = mesh.bounds;
-            float thickness = stick.size[sideAxis] * 0.88f;
-            int perBunch = FirewoodBundleConfig.BunchSize;
+            float thickness = (longAxis == upAxis ? Mathf.Min(stick.size[sideAxis], stick.size[otherAxis]) : stick.size[sideAxis]) * 0.88f;
+            // A date rack layer is a pack of 16: an outer ring of 12 and an inner one of 4.
+            bool isRack = FirewoodPieces.KindOf(item) == BundleKind.HangingDate;
+            int perBunch = isRack ? RackOuter + RackInner : FirewoodBundleConfig.BunchSize;
+            float rackRadius = thickness / (2f * Mathf.Sin(Mathf.PI / RackOuter)) * FirewoodBundleConfig.BunchRadius;
             float ring = thickness / (2f * Mathf.Sin(Mathf.PI / perBunch)) * FirewoodBundleConfig.BunchRadius;
-            float drop = thickness * 1.5f * FirewoodBundleConfig.BunchDrop;
+            float drop = thickness * 1.5f * (isRack ? FirewoodBundleConfig.DateLayerSpacing : FirewoodBundleConfig.BunchDrop);
             // Every bunch is tied close to the middle string, at the same radius. Each
             // sausage leans out from its top just enough that, one bunch down, it has
             // cleared the next bunch's tops, which sit in the gaps half a step around.
@@ -626,10 +640,18 @@ namespace Dizzy.FirewoodBundle
             var turns = new List<Quaternion>(count);
             // Sausages hang with their long axis down. The mesh's low end along that
             // axis is the one tied, so it goes to the top.
-            Quaternion hang = Quaternion.FromToRotation(along, -up);
+            // A date skewer is tied by its other end, so its dates hang the right way up.
+            bool flip = FirewoodPieces.KindOf(item) == BundleKind.HangingDate;
+            Quaternion hang = Quaternion.FromToRotation(flip ? -along : along, -up);
             Vector3 tiedEnd = stick.center;
-            tiedEnd[longAxis] = stick.min[longAxis];
+            tiedEnd[longAxis] = flip ? stick.max[longAxis] : stick.min[longAxis];
             float lowest = 0f;
+            // Dates hang from a little iron rack instead: each bunch is a ring held out
+            // from the middle cord by spokes, and the skewers hang straight down from it.
+            bool rack = flip;
+            Material iron = rack ? StringMaterial(BundleKind.Firewood, System.Array.IndexOf(BundleKind.Firewood.ColorNames, "Black")) : null;
+            int lastRing = -1;
+            Quaternion tip = Quaternion.identity;
 
             for (int i = 0; i < count; i++)
             {
@@ -642,28 +664,80 @@ namespace Dizzy.FirewoodBundle
                 float radius = inBunch > 1
                     ? thickness / (2f * Mathf.Sin(Mathf.PI / inBunch)) * FirewoodBundleConfig.BunchRadius
                     : thickness * 0.5f * FirewoodBundleConfig.BunchRadius;
+                // A rack keeps its full ring: taking skewers off leaves empty slots, and the
+                // ring tips toward the side still carrying them.
                 float angle = (place + (bunch % 2) * 0.5f) * Mathf.PI * 2f / inBunch;
+                if (rack)
+                    RackSlot(place, bunch, rackRadius, out angle, out radius);
                 Vector3 outward = sideA * Mathf.Cos(angle) + sideB * Mathf.Sin(angle);
                 // The string runs from the knot out to the sausage's top. Its length sets
                 // how far below the knot the sausage hangs; the bunch's radius stays put.
                 float reach = Mathf.Sqrt(radius * radius + thickness * thickness * 0.36f) * FirewoodBundleConfig.HangStringLength;
-                float tie = Mathf.Sqrt(Mathf.Max(0f, reach * reach - radius * radius));
+                float tie = rack ? 0f : Mathf.Sqrt(Mathf.Max(0f, reach * reach - radius * radius));
                 Vector3 top = outward * radius + up * (knot - tie);
+                if (rack && bunch != lastRing)
+                {
+                    lastRing = bunch;
+                    Vector3 weight = Vector3.zero;
+                    for (int k = 0; k < inBunch; k++)
+                    {
+                        float a;
+                        float r;
+                        RackSlot(k, bunch, rackRadius, out a, out r);
+                        weight += (sideA * Mathf.Cos(a) + sideB * Mathf.Sin(a)) * (r / rackRadius);
+                    }
+                    weight /= perBunch;
+                    tip = weight.sqrMagnitude > 0.000001f
+                        ? Quaternion.AngleAxis(weight.magnitude * RackTip, Vector3.Cross(up, weight.normalized))
+                        : Quaternion.identity;
+                }
+                if (rack)
+                    top = up * knot + tip * (outward * radius);
+                if (rack && bunch == lastRing && place == 0 && iron != null)
+                {
+                    for (int hoopIndex = 0; hoopIndex < 2; hoopIndex++)
+                    {
+                        float hoopRadius = hoopIndex == 0 ? rackRadius : rackRadius * RackInnerShare;
+                        var hoop = new List<Vector3>(33);
+                        for (int k = 0; k <= 32; k++)
+                        {
+                            float a = k * Mathf.PI * 2f / 32f;
+                            hoop.Add(tip * ((sideA * Mathf.Cos(a) + sideB * Mathf.Sin(a)) * hoopRadius) + up * knot);
+                        }
+                        Renderer ringRenderer = CreateCordLine(item, iron, hoop, RackWire);
+                        if (ringRenderer != null)
+                            renderers.Add(ringRenderer);
+                    }
+                    for (int spoke = 0; spoke < 3; spoke++)
+                    {
+                        float a = spoke * Mathf.PI * 2f / 3f + bunch * 0.5f;
+                        Vector3 rim = tip * ((sideA * Mathf.Cos(a) + sideB * Mathf.Sin(a)) * rackRadius) + up * knot;
+                        Renderer spokeRenderer = CreateCordPiece(item, iron, up * knot, rim, upAxis, RackWire);
+                        if (spokeRenderer != null)
+                            renderers.Add(spokeRenderer);
+                    }
+                }
                 Quaternion spin = Quaternion.AngleAxis(PileHash(seed, i, 8) * 360f, up);
                 Quaternion sway = Quaternion.AngleAxis((PileHash(seed, i, 9) - 0.5f) * 8f, outward);
                 Quaternion lean = Quaternion.FromToRotation(-up, (-up * Mathf.Cos(leanAngle) + outward * Mathf.Sin(leanAngle)).normalized);
-                Quaternion turn = lean * sway * spin * hang;
+                // A rack skewer tilts out a few degrees, a little differently each, so the
+                // ends of one ring clear the ring below.
+                float splay = (2f + PileHash(seed, i, 18) * 3f) * Mathf.Deg2Rad;
+                Quaternion outTilt = Quaternion.FromToRotation(-up, (-up * Mathf.Cos(splay) + outward * Mathf.Sin(splay)).normalized);
+                Quaternion jiggle = Quaternion.AngleAxis((PileHash(seed, i, 19) - 0.5f) * 4f, outward);
+                Quaternion turn = rack ? outTilt * jiggle * spin * hang : lean * sway * spin * hang;
                 Vector3 place3D = top - turn * tiedEnd;
                 renderers.Add(CreateStick(item, mesh, materials, place3D, turn, source));
                 centers.Add(place3D);
                 turns.Add(turn);
                 lowest = Mathf.Min(lowest, knot);
-                if (cord != null)
+                if (cord != null && !rack)
                     renderers.Add(CreateCordPiece(item, cord, up * knot, top, upAxis));
             }
 
-            if (cord != null)
-                renderers.Add(CreateCordPiece(item, cord, Vector3.zero, up * lowest, sideAxis));
+            Material middle = rack && iron != null ? iron : cord;
+            if (middle != null)
+                renderers.Add(CreateCordPiece(item, middle, Vector3.zero, up * lowest, sideAxis, rack ? RackWire : HangCord));
             IncludeInLod(item, renderers);
 
             item.lookText = FirewoodPieces.LookText(item, count);
@@ -1129,11 +1203,11 @@ namespace Dizzy.FirewoodBundle
         }
 
         // A bent piece of string through every point.
-        private static Renderer CreateCordLine(ShipItem item, Material material, List<Vector3> points)
+        private static Renderer CreateCordLine(ShipItem item, Material material, List<Vector3> points, float width = -1f)
         {
             if (points == null || points.Count < 2)
                 return null;
-            Mesh mesh = NetStrandMesh(points, NetWidth);
+            Mesh mesh = NetStrandMesh(points, width > 0f ? width : NetWidth);
             if (mesh == null)
                 return null;
             var piece = new GameObject(StringName);
@@ -1156,6 +1230,21 @@ namespace Dizzy.FirewoodBundle
             }
 
             return renderer;
+        }
+
+        // Where a skewer hangs on a rack layer: the first 12 around the outer ring, the
+        // last 4 around the inner one, each layer turned half a step from the one above.
+        private static void RackSlot(int slot, int layer, float outer, out float angle, out float radius)
+        {
+            float turn = (layer % 2) * 0.5f;
+            if (slot < RackOuter)
+            {
+                angle = (slot + turn) * Mathf.PI * 2f / RackOuter;
+                radius = outer;
+                return;
+            }
+            angle = (slot - RackOuter + 0.5f + turn) * Mathf.PI * 2f / RackInner;
+            radius = outer * RackInnerShare;
         }
 
         // One straight piece of string. The frame axis is the one most across it.
