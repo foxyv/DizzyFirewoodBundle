@@ -32,6 +32,12 @@ namespace Dizzy.FirewoodBundle
         internal static ConfigEntry<int> MaxApples;
         internal static ConfigEntry<int> AppleLayerSizeAmount;
         internal static ConfigEntry<float> NetThicknessAmount;
+        internal static ConfigEntry<bool> CheeseEnabled;
+        internal static ConfigEntry<int> MaxCheese;
+        internal static ConfigEntry<int> CheesePerWheelAmount;
+        internal static ConfigEntry<bool> GoatCheeseEnabled;
+        internal static ConfigEntry<int> MaxGoatCheese;
+        internal static ConfigEntry<int> GoatCheeseLayerSizeAmount;
         internal static ConfigEntry<bool> OrangesEnabled;
         internal static ConfigEntry<int> MaxOranges;
         internal static ConfigEntry<int> OrangeLayerSizeAmount;
@@ -198,6 +204,36 @@ namespace Dizzy.FirewoodBundle
         internal static float NetThickness
         {
             get { return NetThicknessAmount != null ? NetThicknessAmount.Value : 1.5f; }
+        }
+
+        internal static bool CheeseIsEnabled
+        {
+            get { return CheeseEnabled == null || CheeseEnabled.Value; }
+        }
+
+        internal static int CheeseLimit
+        {
+            get { return MaxCheese != null ? MaxCheese.Value : 30; }
+        }
+
+        internal static int CheesePerWheel
+        {
+            get { return CheesePerWheelAmount != null ? Mathf.Clamp(CheesePerWheelAmount.Value, 8, 12) : 10; }
+        }
+
+        internal static bool GoatCheeseIsEnabled
+        {
+            get { return GoatCheeseEnabled == null || GoatCheeseEnabled.Value; }
+        }
+
+        internal static int GoatCheeseLimit
+        {
+            get { return MaxGoatCheese != null ? MaxGoatCheese.Value : 12; }
+        }
+
+        internal static int GoatCheeseLayerSize
+        {
+            get { return GoatCheeseLayerSizeAmount != null ? Mathf.Max(2, GoatCheeseLayerSizeAmount.Value) : 5; }
         }
 
         internal static bool OrangesAreEnabled
@@ -457,8 +493,52 @@ namespace Dizzy.FirewoodBundle
                 "Net Thickness",
                 1.5f,
                 new ConfigDescription(
-                    "Multiplier for how thick the strings of apple and orange bag nets are.",
+                    "Multiplier for how thick the strings of apple, orange and goat cheese bag nets are.",
                     new AcceptableValueRange<float>(0.3f, 4f)));
+
+            CheeseEnabled = config.Bind(
+                "Cheese",
+                "Enabled",
+                true,
+                "Hold a dried or smoked wedge of cheese and right-click another of the same kind to put them together as a wheel. Full wheels stack. Take a wedge off to eat, cook, salt or slice it. Look at a loose wedge in an open crate, or lying nearby, and press G to pick up a wheel.");
+
+            MaxCheese = config.Bind(
+                "Cheese",
+                "MaxCheese",
+                30,
+                new ConfigDescription(
+                    "Most wedges in one stack of wheels, up to 999.",
+                    new AcceptableValueRange<int>(2, FirewoodPieces.MaxCount)));
+
+            CheesePerWheelAmount = config.Bind(
+                "Cheese",
+                "Wedges Per Wheel",
+                10,
+                new ConfigDescription(
+                    "How many wedges make one wheel. A crate holds 10. Each wedge is drawn a little narrower or wider to close the circle; 9 is closest to its real shape.",
+                    new AcceptableValueRange<int>(8, 12)));
+
+            GoatCheeseEnabled = config.Bind(
+                "Goat Cheese",
+                "Enabled",
+                true,
+                "Hold a dried or smoked round of goat cheese and right-click another of the same kind to put them in a net bag, or click an empty lamp hook with one to start a hanging bag. Right-click the bag with more to add them, or with empty hands to take one out. Press the tie color key to change the net's color.");
+
+            MaxGoatCheese = config.Bind(
+                "Goat Cheese",
+                "MaxGoatCheese",
+                12,
+                new ConfigDescription(
+                    "Most rounds of goat cheese in one bag, up to 999. A crate holds 12.",
+                    new AcceptableValueRange<int>(1, FirewoodPieces.MaxCount)));
+
+            GoatCheeseLayerSizeAmount = config.Bind(
+                "Goat Cheese",
+                "Layer Size",
+                5,
+                new ConfigDescription(
+                    "How many rounds sit in the bottom layer of a bag. Each layer above holds one fewer.",
+                    new AcceptableValueRange<int>(2, 12)));
 
             OrangesEnabled = config.Bind(
                 "Orange Bags",

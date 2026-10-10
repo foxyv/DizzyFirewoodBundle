@@ -19,6 +19,10 @@ namespace Dizzy.FirewoodBundle
         private const int HullBands = 5;
         private const float HullMargin = 0.01f;
         private const float CoreShare = 0.35f;
+        // A bag's flat foot is this share of its rim across, and its collider ends in a
+        // ring this far out around the tie.
+        private const float BagFoot = 0.7f;
+        private const float BagTie = 0.02f;
         private static readonly Dictionary<int, Mesh> HullMeshes = new Dictionary<int, Mesh>();
         private static readonly System.Reflection.FieldInfo SubcollidersField = AccessTools.Field(typeof(ItemRigidbody), "subcolliders");
         private static readonly System.Reflection.FieldInfo BodyField = AccessTools.Field(typeof(ItemRigidbody), "rigidbody");
@@ -49,6 +53,10 @@ namespace Dizzy.FirewoodBundle
         // about a third out of balance, so it tips about 8 degrees.
         private const float RackTip = 25f;
         private const float AppleNeck = 0.012f;
+        // A goat cheese net stands this far off the rounds, and allows this much up and
+        // down for a round that is not lying quite level.
+        private const float RoundGap = 0.004f;
+        private const float RoundPad = 0.006f;
         private const int PileTries = 8;
 
         private static readonly Dictionary<int, int> Stamps = new Dictionary<int, int>();
@@ -215,6 +223,7 @@ namespace Dizzy.FirewoodBundle
             BundleKind kind = FirewoodPieces.KindOf(item);
             float pitch = cross * (kind != null ? kind.Spacing : 0.97f);
             List<Quaternion> turns = null;
+            Vector3 pieceScale = Vector3.one;
             List<Vector3> centers;
             if (kind == BundleKind.Sausage && mesh != null && SausageStacks.WidthOf(item) == SausageStacks.TreeWidth)
                 centers = TreeCenters(item, count, mesh, longAxis, FirewoodBundleConfig.SausageSpacing, out turns);
@@ -222,6 +231,8 @@ namespace Dizzy.FirewoodBundle
                 centers = PileCenters(item, count, mesh, longAxis, FirewoodBundleConfig.SausageSpacing, out turns);
             else if (kind == BundleKind.Sausage && mesh != null)
                 centers = StackCenters(item, count, mesh, longAxis, FirewoodBundleConfig.SausageSpacing);
+            else if (kind == BundleKind.Cheese && mesh != null)
+                centers = CheeseCenters(count, mesh, out turns, out pieceScale);
             else
                 centers = FirewoodPieces.Centers(count, pitch, longAxis);
             ClearSticks(item);
@@ -231,9 +242,9 @@ namespace Dizzy.FirewoodBundle
                 Material[] materials = source.sharedMaterials;
                 var renderers = new List<Renderer>();
                 for (int i = 0; i < centers.Count; i++)
-                    renderers.Add(CreateStick(item, mesh, materials, centers[i], turns != null ? turns[i] : Quaternion.identity, source));
+                    renderers.Add(CreateStick(item, mesh, materials, centers[i], turns != null ? turns[i] : Quaternion.identity, source, pieceScale));
                 // An Auto sausage stack is a neat block, so it gets a cord like firewood.
-                bool tiedStack = kind != null && kind.Stacks && SausageStacks.WidthOf(item) == 0;
+                bool tiedStack = kind == BundleKind.Sausage && SausageStacks.WidthOf(item) == 0;
                 int tieUp = tiedStack ? (longAxis == StackUpAxis ? (StackUpAxis + 1) % 3 : StackUpAxis) : -1;
                 if (kind == null || kind.Tie != TieStyle.None || tiedStack)
                 {
@@ -257,11 +268,43 @@ namespace Dizzy.FirewoodBundle
                 AdoptTwoHandedHold(item);
             ApplyMass(item, count);
             ApplyHoldDistance(item, centers, longAxis, cross);
+            // A wheel is held by its middle, so it sits further out than one wedge.
+            if (kind == BundleKind.Cheese && mesh != null && prefab != null)
+                item.holdDistance = prefab.holdDistance + mesh.bounds.size.x * 0.6f;
             int upAxis = longAxis == StackUpAxis ? (StackUpAxis + 1) % 3 : StackUpAxis;
             FitColliders(item, centers, mesh, turns, upAxis);
             // Growing the physics shape while the hull is heeled over shoves the boat.
             // Ignore the hull capsule until the bundle is clear of it.
             QuietHull(item);
+        }
+
+        // Cheese wedges sit point to point as a wheel, a set number to the wheel, and full
+        // wheels stack with their cuts half a wedge apart. The game's wedge is a slice of a
+        // round: its point is at the high end of its long side, on the wheel's axis, and
+        // its rind curves around the low end, a wheel's radius away. It is a little wider
+        // than a tenth of a circle, so each is drawn narrower or wider to close the wheel.
+        private static List<Vector3> CheeseCenters(int count, Mesh mesh, out List<Quaternion> turns, out Vector3 scale)
+        {
+            Bounds wedge = mesh.bounds;
+            int perWheel = FirewoodBundleConfig.CheesePerWheel;
+            float radius = wedge.size.x;
+            float natural = Mathf.Asin(Mathf.Clamp(wedge.extents.z / Mathf.Max(radius, 0.001f), 0.05f, 0.95f));
+            float slot = Mathf.PI / perWheel;
+            scale = new Vector3(1f, 1f, Mathf.Tan(slot) / Mathf.Tan(natural));
+            Vector3 point = Vector3.Scale(new Vector3(wedge.max.x, 0f, wedge.center.z), scale);
+            var centers = new List<Vector3>(count);
+            turns = new List<Quaternion>(count);
+            for (int i = 0; i < count; i++)
+            {
+                int wheel = i / perWheel;
+                int place = i % perWheel;
+                Quaternion turn = Quaternion.AngleAxis((place * 2f + wheel) * slot * Mathf.Rad2Deg, Vector3.up);
+                turns.Add(turn);
+                // The wedge's point stays on the axis, one wheel's height up for each wheel.
+                centers.Add(Vector3.up * (wheel * wedge.size.y) - turn * point);
+            }
+
+            return centers;
         }
 
         // A sausage stack is a tower: rows stack along the sausage's local up, and each
@@ -633,8 +676,9 @@ namespace Dizzy.FirewoodBundle
             ClearHull(item);
             source.enabled = false;
             Material[] materials = source.sharedMaterials;
-            // White cord: the firewood palette's White, matte like cord rather than a ribbon.
-            Material cord = StringMaterial(BundleKind.Firewood, System.Array.IndexOf(BundleKind.Firewood.ColorNames, "White"));
+            // Tan cord: the firewood palette's Tan, matte like cord rather than a ribbon.
+            // White stood out too brightly against the sausages.
+            Material cord = StringMaterial(BundleKind.Firewood, System.Array.IndexOf(BundleKind.Firewood.ColorNames, "Tan"));
             var renderers = new List<Renderer>();
             var centers = new List<Vector3>(count);
             var turns = new List<Quaternion>(count);
@@ -862,6 +906,9 @@ namespace Dizzy.FirewoodBundle
         // An apple bag: apples settle in layers at the bottom of a net, each layer one
         // apple smaller than the one under it, and the net closes over them to a neck
         // tied below the hook. The same shape hangs from a hook or sits on the deck.
+        // Oranges use it as it is. Goat cheese is a flat round, not a ball, so its rounds
+        // lie flat, each layer resting on the one under it, and its net is pulled taut
+        // around the rounds' real outline.
         private static void ApplyAppleBag(ShipItem item)
         {
             MeshRenderer source = item.GetComponent<MeshRenderer>();
@@ -872,9 +919,14 @@ namespace Dizzy.FirewoodBundle
 
             int count = FirewoodPieces.CountOf(item);
             Bounds apple = mesh.bounds;
-            float radius = Mathf.Max(apple.extents.x, Mathf.Max(apple.extents.y, apple.extents.z)) * 0.92f;
             BundleKind bagKind = FirewoodPieces.KindOf(item);
-            int baseLayer = bagKind == BundleKind.OrangeBag ? FirewoodBundleConfig.OrangeLayerSize : FirewoodBundleConfig.AppleLayerSize;
+            bool rounds = bagKind == BundleKind.GoatCheeseBag;
+            float radius = rounds
+                ? Mathf.Max(apple.extents.x, apple.extents.z) * 1.01f
+                : Mathf.Max(apple.extents.x, Mathf.Max(apple.extents.y, apple.extents.z)) * 0.92f;
+            int baseLayer = rounds
+                ? FirewoodBundleConfig.GoatCheeseLayerSize
+                : bagKind == BundleKind.OrangeBag ? FirewoodBundleConfig.OrangeLayerSize : FirewoodBundleConfig.AppleLayerSize;
             SaveablePrefab save = item.GetComponent<SaveablePrefab>();
             int seed = save != null ? save.instanceId : 0;
 
@@ -905,10 +957,24 @@ namespace Dizzy.FirewoodBundle
                 layerSizes[last - 1]--;
             }
 
+            // Two rounds of cheese stack rather than sit side by side, and four put their
+            // pair in the middle row, between two single rounds.
+            if (rounds && count == 2)
+            {
+                layerSizes.Clear();
+                layerSizes.Add(1);
+                layerSizes.Add(1);
+            }
+            if (rounds && layerSizes.Count == 3 && layerSizes[0] == 2 && layerSizes[1] == 1 && layerSizes[2] == 1)
+            {
+                layerSizes[0] = 1;
+                layerSizes[1] = 2;
+            }
+
             int layers = layerSizes.Count;
-            float step = radius * 1.6f;
+            float step = rounds ? apple.size.y * 1.03f : radius * 1.6f;
             float neck = -AppleTie;
-            float topCenter = neck - radius * 2.4f;
+            float topCenter = neck - (rounds ? apple.extents.y + radius * 0.9f : radius * 2.4f);
             var layerY = new float[layers];
             var layerRing = new float[layers];
             for (int layer = 0; layer < layers; layer++)
@@ -947,10 +1013,10 @@ namespace Dizzy.FirewoodBundle
                         float r = around > 1 ? ring : 0f;
                         place = new Vector3(Mathf.Cos(angle) * r, layerY[layer], Mathf.Sin(angle) * r);
                     }
-                    place += new Vector3(PileHash(seed, index, 13) - 0.5f, 0f, PileHash(seed, index, 14) - 0.5f) * radius * 0.12f;
+                    place += new Vector3(PileHash(seed, index, 13) - 0.5f, 0f, PileHash(seed, index, 14) - 0.5f) * radius * (rounds ? 0.04f : 0.12f);
                     layerPlaces[layer].Add(new Vector2(place.x, place.z));
                     Quaternion turn = Quaternion.AngleAxis(PileHash(seed, index, 15) * 360f, Vector3.up)
-                        * Quaternion.AngleAxis((PileHash(seed, index, 16) - 0.5f) * 50f, Vector3.right);
+                        * Quaternion.AngleAxis((PileHash(seed, index, 16) - 0.5f) * (rounds ? 4f : 50f), Vector3.right);
                     Vector3 position = place - turn * apple.center;
                     renderers.Add(CreateStick(item, mesh, materials, position, turn, source));
                     centers.Add(position);
@@ -969,6 +1035,12 @@ namespace Dizzy.FirewoodBundle
             // floor runs in to the knot in the middle.
             float rim = layerY[0] - reach * 0.95f;
             float bottom = rim - reach * 0.3f;
+            // Under a round of cheese the rim is at its bottom face and the floor is flatter.
+            if (rounds)
+            {
+                rim = layerY[0] - (apple.extents.y + RoundPad);
+                bottom = rim - 0.012f;
+            }
             float topLayer = layerY[layers - 1];
             // How far a layer's fruit reach out in one direction across the bag, so a
             // full ring keeps the net round and two side by side give it an oval.
@@ -985,7 +1057,7 @@ namespace Dizzy.FirewoodBundle
             // the fruit, under the bottom one it rounds into a flat floor, and over the top it
             // wraps the top layer, then leaves along the line that just touches it and runs
             // straight to the neck.
-            System.Func<float, Vector2, float> profile = (y, way) =>
+            System.Func<float, Vector2, float> fruitProfile = (y, way) =>
             {
                 if (y < layerY[0])
                 {
@@ -1045,11 +1117,77 @@ namespace Dizzy.FirewoodBundle
                 return widest;
             };
 
+            // A net around rounds of cheese is pulled taut: it lies on the rounds' own
+            // outline where it touches them and runs straight between those places, so it
+            // bridges under an overhanging round instead of cutting through it. Heights are
+            // taken at the same steps the strands are drawn at, from the rim up to the neck.
+            int netSamples = rounds ? 48 : 28;
+            float[,] roundSide = null;
+            float[] grid = null;
+            float[] layerOut = null;
+            if (rounds)
+            {
+                float half = apple.extents.y;
+                float wide = Mathf.Max(apple.extents.x, apple.extents.z);
+                roundSide = new float[layers, netSamples + 1];
+                grid = new float[netSamples + 1];
+                layerOut = new float[layers];
+                for (int layer = 0; layer < layers; layer++)
+                {
+                    for (int i = 0; i <= netSamples; i++)
+                    {
+                        float up = Mathf.Lerp(rim, neck, i / (float)netSamples) - layerY[layer];
+                        // Outside the round's height it does not hold the net out at all.
+                        if (Mathf.Abs(up) > half + RoundPad + 0.0005f)
+                        {
+                            roundSide[layer, i] = -1f;
+                            continue;
+                        }
+                        // The widest the round gets within a little above and below, so a
+                        // slightly tilted round still fits.
+                        float most = 0f;
+                        for (int k = -1; k <= 1; k++)
+                            most = Mathf.Max(most, RoundWidth(Mathf.Clamp((up + k * RoundPad) / half, -1f, 1f)));
+                        roundSide[layer, i] = wide * most + RoundGap;
+                    }
+                }
+            }
+
+            System.Func<float, Vector2, float> roundsProfile = (y, way) =>
+            {
+                for (int layer = 0; layer < layers; layer++)
+                    layerOut[layer] = across(layer, way);
+                for (int i = 0; i <= netSamples; i++)
+                {
+                    float width = i == netSamples ? AppleNeck : 0f;
+                    for (int layer = 0; layer < layers; layer++)
+                    {
+                        if (roundSide[layer, i] >= 0f)
+                            width = Mathf.Max(width, layerOut[layer] + roundSide[layer, i]);
+                    }
+                    grid[i] = width;
+                }
+
+                // Under the rim the floor runs in to the knot.
+                if (y < rim)
+                    return grid[0] * Mathf.InverseLerp(bottom, rim, y);
+                int at = Mathf.Clamp(Mathf.RoundToInt(Mathf.InverseLerp(rim, neck, y) * netSamples), 0, netSamples);
+                float taut = grid[at];
+                for (int below = 0; below < at; below++)
+                {
+                    for (int above = at + 1; above <= netSamples; above++)
+                        taut = Mathf.Max(taut, Mathf.Lerp(grid[below], grid[above], (at - below) / (float)(above - below)));
+                }
+                return taut;
+            };
+
+            System.Func<float, Vector2, float> profile = rounds ? roundsProfile : fruitProfile;
+
             Material net = StringMaterial(bagKind, FirewoodPieces.ColorOf(item));
             if (net != null)
             {
                 const int strands = 14;
-                const int samples = 28;
+                int samples = netSamples;
                 float twist = Mathf.PI * 1.1f;
                 for (int family = 0; family < 2; family++)
                 {
@@ -1125,15 +1263,30 @@ namespace Dizzy.FirewoodBundle
             if (prefab != null)
                 item.holdDistance = prefab.holdDistance + layerRing[0] + radius;
             ApplyMass(item, count);
-            // A flat-bottomed hull around the fruit, so the bag stands upright on the deck.
-            // One more fruit-sized piece at the tie lets the hull reach the hook, which the
-            // bag needs to hang itself back up after a reload.
-            var shape = new List<Vector3>(centers) { -apple.center };
-            var shapeTurns = new List<Quaternion>(turns) { Quaternion.identity };
-            FitColliders(item, shape, mesh, shapeTurns, 1);
+            // The collider follows the net, with a flat foot so the bag stands upright on the
+            // deck. It reaches up to the tie, which sits inside the lamp hook's own collider:
+            // the bag needs to touch the hook to hang itself back up after a reload.
+            float widestAt = rounds ? layerY[0] - apple.extents.y * 0.79f : layerY[0];
+            Bounds core;
+            Mesh hull = BagHull(item, profile, bottom, rim, widestAt, neck, out core);
+            FitBox(item, core);
+            if (hull != null)
+                AddHull(item, hull);
             if (item.GetComponent<HangableItem>() == null)
                 item.gameObject.AddComponent<HangableItem>();
             QuietHull(item);
+        }
+
+        // How wide a round of goat cheese is at a height above its middle, as shares of its
+        // half height and its widest radius. It is widest low on its side, draws in a
+        // little toward the top, and is bevelled at both faces.
+        private static float RoundWidth(float height)
+        {
+            if (height <= -0.79f)
+                return Mathf.Lerp(0.84f, 1f, Mathf.InverseLerp(-1f, -0.79f, height));
+            if (height <= 0.77f)
+                return Mathf.Lerp(1f, 0.9f, Mathf.InverseLerp(-0.79f, 0.77f, height));
+            return Mathf.Lerp(0.9f, 0.725f, Mathf.InverseLerp(0.77f, 1f, height));
         }
 
         // How far from the middle a ring of this many apples sits so they just touch.
@@ -1351,14 +1504,15 @@ namespace Dizzy.FirewoodBundle
             Material[] materials,
             Vector3 localPosition,
             Quaternion localRotation,
-            MeshRenderer source)
+            MeshRenderer source,
+            Vector3 scale = default(Vector3))
         {
             var stick = new GameObject(StickName);
             stick.layer = item.gameObject.layer;
             stick.transform.SetParent(item.transform, false);
             stick.transform.localPosition = localPosition;
             stick.transform.localRotation = localRotation;
-            stick.transform.localScale = Vector3.one;
+            stick.transform.localScale = scale == Vector3.zero ? Vector3.one : scale;
 
             MeshFilter filter = stick.AddComponent<MeshFilter>();
             filter.sharedMesh = mesh;
@@ -2480,6 +2634,102 @@ namespace Dizzy.FirewoodBundle
             size[upAxis] = coreHeight;
             core = new Bounds(middle, size);
 
+            return KeepHull(item, vertices, triangles);
+        }
+
+        // The collider of a net bag follows its net: a ring at each of a few heights, as
+        // far out as the net goes in each of HullSides directions, from a flat foot at the
+        // knot's height up to the tie. Built from the pieces' boxes instead, it stood well
+        // clear of round fruit, whose boxes have corners the fruit does not, and bags
+        // piled together sat far apart. The core is a box inside the bottom layer, for the
+        // item's own collider.
+        private static Mesh BagHull(
+            ShipItem item,
+            System.Func<float, Vector2, float> profile,
+            float bottom,
+            float rim,
+            float widest,
+            float neck,
+            out Bounds core)
+        {
+            float turn = Mathf.PI * 2f / HullSides;
+            float sinTurn = Mathf.Sin(turn);
+            // The strands lie on the outside of the shape the net is drawn around.
+            float margin = NetWidth * 2f;
+            var heights = new List<float> { bottom, rim, widest };
+            for (int step = 1; step <= 5; step++)
+                heights.Add(Mathf.Lerp(widest, neck, step / 5f));
+            heights.Add(0f);
+
+            var vertices = new List<Vector3>(heights.Count * HullSides);
+            var triangles = new List<int>((heights.Count - 1) * HullSides * 6);
+            var reach = new float[HullSides];
+            core = new Bounds(new Vector3(0f, rim, 0f), Vector3.one * 0.05f);
+            for (int ring = 0; ring < heights.Count; ring++)
+            {
+                for (int k = 0; k < HullSides; k++)
+                {
+                    var way = new Vector2(Mathf.Cos(k * turn), Mathf.Sin(k * turn));
+                    // The foot is a flat stand under the rim, and the top a small ring at
+                    // the tie. Every ring between is the net itself.
+                    if (ring == 0)
+                        reach[k] = (profile(rim, way) + margin) * BagFoot;
+                    else if (ring == heights.Count - 1)
+                        reach[k] = BagTie;
+                    else
+                        reach[k] = profile(heights[ring], way) + margin;
+                }
+
+                // Box inside the bottom layer: its reach both ways across the bag.
+                if (ring == 2)
+                {
+                    int quarter = HullSides / 4;
+                    float plusX = reach[0];
+                    float minusX = reach[quarter * 2];
+                    float plusZ = reach[quarter];
+                    float minusZ = reach[quarter * 3];
+                    float coreHeight = Mathf.Max(0.02f, Mathf.Min((widest - rim) * 2f, (neck - rim) * 0.5f));
+                    core = new Bounds(
+                        new Vector3((plusX - minusX) * 0.5f, rim + coreHeight * 0.5f, (plusZ - minusZ) * 0.5f),
+                        new Vector3(
+                            Mathf.Max(0.05f, (plusX + minusX) * CoreShare),
+                            coreHeight,
+                            Mathf.Max(0.05f, (plusZ + minusZ) * CoreShare)));
+                }
+
+                for (int k = 0; k < HullSides; k++)
+                {
+                    // Where this direction's edge meets the next one's.
+                    int next = (k + 1) % HullSides;
+                    float a1 = k * turn;
+                    float a2 = next * turn;
+                    vertices.Add(new Vector3(
+                        (reach[k] * Mathf.Sin(a2) - reach[next] * Mathf.Sin(a1)) / sinTurn,
+                        heights[ring],
+                        (Mathf.Cos(a1) * reach[next] - Mathf.Cos(a2) * reach[k]) / sinTurn));
+                }
+
+                if (ring == 0)
+                    continue;
+                int first = (ring - 1) * HullSides;
+                for (int k = 0; k < HullSides; k++)
+                {
+                    int next = (k + 1) % HullSides;
+                    triangles.Add(first + k);
+                    triangles.Add(first + HullSides + k);
+                    triangles.Add(first + next);
+                    triangles.Add(first + next);
+                    triangles.Add(first + HullSides + k);
+                    triangles.Add(first + HullSides + next);
+                }
+            }
+
+            return KeepHull(item, vertices, triangles);
+        }
+
+        // Makes the hull's mesh and remembers it for the item, in place of any it had.
+        private static Mesh KeepHull(ShipItem item, List<Vector3> vertices, List<int> triangles)
+        {
             int id = item.GetInstanceID();
             Mesh previous;
             if (HullMeshes.TryGetValue(id, out previous) && previous != null)

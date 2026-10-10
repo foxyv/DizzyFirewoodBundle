@@ -2,7 +2,7 @@
 
 *Formerly Dizzy Firewood Bundle.* The plugin folder, DLL and config file keep their old `Dizzy.FirewoodBundle` / `com.dizzy.sailwind.firewoodbundle` names, so updating is a drop-in replacement.
 
-A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepInEx 5](https://thunderstore.io/c/sailwind/p/BepInEx/BepInExPack/) that bundles loose firewood, candles, sausages, bananas, apples, oranges, dates and fishing hooks together.
+A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepInEx 5](https://thunderstore.io/c/sailwind/p/BepInEx/BepInExPack/) that bundles loose firewood, candles, sausages, bananas, apples, oranges, dates, cheese and fishing hooks together.
 
 ## Features
 
@@ -20,7 +20,7 @@ A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepI
 
 ### Tie colors
 - Hold or look at a firewood or candle bundle and press **\\** to change its tie color.
-- Candles: red, blue, green, gold, white, black, purple, pink, orange, tan and brown. Firewood: its natural brown, then the same colors up to tan. Apple and orange bags: the same eleven, starting from black.
+- Candles: red, blue, green, gold, white, black, purple, pink, orange, tan and brown. Firewood: its natural brown, then the same colors up to tan. Apple, orange and goat cheese bags: the same eleven, starting from black.
 
 ### Sausages
 - Hold a smoked or dried sausage and right-click another of the same kind to stack them.
@@ -36,7 +36,7 @@ A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepI
 ### Hanging sausages
 - Click an empty lamp hook with a smoked or dried sausage to hang it. Sausages that would spoil can't be hung.
 - Right-click the hanging bundle with a sausage or a stack to add more. A stack moves as many as fit. Kinds don't mix.
-- Sausages hang in bunches around a central string, each on its own short white string. When a bunch is full, a new one starts lower down.
+- Sausages hang in bunches around a central string, each on its own short tan string. When a bunch is full, a new one starts lower down.
 - Right-click the bundle to take one sausage off. Taking the last one frees the hook.
 - Left-click lifts the whole bundle, which can be hung on another empty lamp hook.
 
@@ -66,6 +66,18 @@ A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepI
 - Click an empty lamp hook with a dried date, or right-click one dried date onto another to make a rack in hand.
 - Each layer holds 16 skewers: an outer ring of 12 and an inner ring of 4. Taking skewers off leaves gaps, and the ring tips toward the side that still has dates.
 - Right-click the rack to add or take a date, or hold the rack and right-click loose dried dates. Press **G** on dried dates in a crate or lying nearby to pick up a rack.
+
+### Cheese wheels
+- Hold a dried or smoked wedge of cheese and right-click another of the same kind to put them together as a wheel.
+- Ten wedges make a wheel, the same as a crate of cheese. A wheel that isn't full has a gap where wedges are missing.
+- More wedges start another wheel on top. Right-click the wheel to add a wedge, or with empty hands to take one off.
+- Press **G** on a wedge in an open crate, or on a loose one lying around, to pick up a wheel.
+- To eat, cook, salt or slice cheese, take a wedge off first.
+
+### Goat cheese bags
+- Goat cheese is already a small round, so it goes in a net bag like the fruit: right-click two dried or smoked rounds together, or click an empty lamp hook with one.
+- The rounds lie flat in layers inside the net. A crate's 12 fill one bag.
+- Add, take out, hang, recolor and press **G** on goat cheese the same way as apples and oranges.
 
 ### Fishing hooks
 - Hold a fishing hook and right-click another hook to string them on a line.
@@ -117,7 +129,13 @@ Settings are in `BepInEx\config\com.dizzy.sailwind.firewoodbundle.cfg`. The file
 | Orange Bags | Enabled | true | Turns orange bags on or off. |
 | Orange Bags | MaxOranges | 24 | Most oranges in a bag, up to 999. |
 | Orange Bags | Layer Size | 7 | Oranges in the bottom layer. Each layer above holds one fewer. |
-| Fruit Bags | Net Thickness | 1.5 | How thick the strings of apple and orange bag nets are. |
+| Fruit Bags | Net Thickness | 1.5 | How thick the strings of apple, orange and goat cheese bag nets are. |
+| Cheese | Enabled | true | Turns cheese wheels on or off. |
+| Cheese | MaxCheese | 30 | Most wedges in one stack of wheels, up to 999. |
+| Cheese | Wedges Per Wheel | 10 | How many wedges make one wheel, from 8 to 12. |
+| Goat Cheese | Enabled | true | Turns goat cheese bags on or off. |
+| Goat Cheese | MaxGoatCheese | 12 | Most rounds in a bag, up to 999. |
+| Goat Cheese | Layer Size | 5 | Rounds in the bottom layer. Each layer above holds one fewer. |
 | Dates | Enabled | true | Turns date racks on or off. |
 | Dates | MaxDates | 32 | Most date skewers on one rack, up to 999. |
 | Dates | Layer Spacing | 2 | How far apart a rack's layers hang. |
@@ -151,7 +169,7 @@ dotnet build src\Dizzy.FirewoodBundle\Dizzy.FirewoodBundle.csproj -c Release -p:
 To package a release zip into `dist\`, run:
 
 ```powershell
-.\scripts\package-release.ps1 -Version 0.10.0
+.\scripts\package-release.ps1 -Version 0.11.0
 ```
 
 ## License
