@@ -81,8 +81,8 @@ Furniture, beds, sails, stoves, racks, paintings, clocks and compasses are place
 - [ ] 43 bread
 - [ ] 50 bun
 - [ ] 51 crab cakes
-- [ ] 52 cheese
-- [ ] 53 goat cheese
+- [x] 52 cheese: wedges put together as wheels, ten to a wheel, and wheels stack
+- [x] 53 goat cheese: net bags, rounds lying flat in layers
 - [ ] 143 rice cake
 - [ ] 155 baguette
 

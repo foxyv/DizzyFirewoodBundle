@@ -167,6 +167,45 @@ namespace Dizzy.FirewoodBundle
             1f,
             false);
 
+        // A wedge of cheese. Dried or smoked wedges sit point to point as a wheel, and
+        // full wheels stack. Goat cheese is already a round, so it is not one of these.
+        internal static readonly BundleKind Cheese = new BundleKind(
+            "cheese wheel",
+            "cheese",
+            "Wedge",
+            "Wheel",
+            "",
+            new string[0],
+            new Color[0],
+            TieStyle.None,
+            1f,
+            false);
+
+        // A round of goat cheese. Dried or smoked rounds go in a net bag, like fruit.
+        internal static readonly BundleKind GoatCheese = new BundleKind(
+            "goat cheese",
+            "goat cheeses",
+            "Goat Cheese",
+            "Bag",
+            "",
+            new string[0],
+            new Color[0],
+            TieStyle.None,
+            1f,
+            false);
+
+        internal static readonly BundleKind GoatCheeseBag = new BundleKind(
+            "goat cheese bag",
+            "goat cheeses",
+            "Goat Cheese",
+            "Bag",
+            "Net",
+            BagColorNames,
+            BagColors,
+            TieStyle.None,
+            1f,
+            false);
+
         // A date skewer: the game's date is a stick with three dates on it. Dried
         // skewers hang from a rack, which two of them make in hand or one starts on a hook.
         internal static readonly BundleKind Date = new BundleKind(
@@ -259,6 +298,10 @@ namespace Dizzy.FirewoodBundle
                     return FirewoodBundleConfig.OrangesAreEnabled;
                 if (this == Date || this == HangingDate)
                     return FirewoodBundleConfig.DatesAreEnabled;
+                if (this == Cheese)
+                    return FirewoodBundleConfig.CheeseIsEnabled;
+                if (this == GoatCheese || this == GoatCheeseBag)
+                    return FirewoodBundleConfig.GoatCheeseIsEnabled;
                 return FirewoodBundleConfig.SausagesAreEnabled;
             }
         }
@@ -280,7 +323,11 @@ namespace Dizzy.FirewoodBundle
                                     ? FirewoodBundleConfig.AppleLimit
                                     : this == OrangeBag || this == Orange
                                         ? FirewoodBundleConfig.OrangeLimit
-                                        : this == Date || this == HangingDate ? FirewoodBundleConfig.DateLimit : FirewoodBundleConfig.SausageLimit;
+                                        : this == Date || this == HangingDate
+                                            ? FirewoodBundleConfig.DateLimit
+                                            : this == Cheese
+                                                ? FirewoodBundleConfig.CheeseLimit
+                                                : this == GoatCheese || this == GoatCheeseBag ? FirewoodBundleConfig.GoatCheeseLimit : FirewoodBundleConfig.SausageLimit;
                 return Mathf.Clamp(limit, 2, FirewoodPieces.MaxCount);
             }
         }
@@ -288,43 +335,44 @@ namespace Dizzy.FirewoodBundle
         // Hangs from a lamp hook and stays a bundle even with one piece left.
         internal bool Hangs
         {
-            get { return this == HangingSausage || this == HangingBanana || this == AppleBag || this == OrangeBag || this == HangingDate; }
+            get { return this == HangingSausage || this == HangingBanana || this == AppleBag || this == OrangeBag || this == HangingDate || this == GoatCheeseBag; }
         }
 
         // Food whose count lives in a StackState rather than in amount.
         internal bool IsFood
         {
-            get { return this == Sausage || this == HangingSausage || this == Banana || this == HangingBanana || this == Apple || this == AppleBag || this == Orange || this == OrangeBag || this == Date || this == HangingDate; }
+            get { return this == Sausage || this == HangingSausage || this == Banana || this == HangingBanana || this == Apple || this == AppleBag || this == Orange || this == OrangeBag || this == Date || this == HangingDate || this == Cheese || this == GoatCheese || this == GoatCheeseBag; }
         }
 
         // The loose piece a hanging kind is made of, and the other way round.
         internal BundleKind Loose
         {
-            get { return this == HangingSausage ? Sausage : this == HangingBanana ? Banana : this == AppleBag ? Apple : this == OrangeBag ? Orange : this == HangingDate ? Date : this; }
+            get { return this == HangingSausage ? Sausage : this == HangingBanana ? Banana : this == AppleBag ? Apple : this == OrangeBag ? Orange : this == HangingDate ? Date : this == GoatCheeseBag ? GoatCheese : this; }
         }
 
         internal BundleKind Hung
         {
-            get { return this == Sausage ? HangingSausage : this == Banana ? HangingBanana : this == Apple ? AppleBag : this == Orange ? OrangeBag : this == Date ? HangingDate : this; }
+            get { return this == Sausage ? HangingSausage : this == Banana ? HangingBanana : this == Apple ? AppleBag : this == Orange ? OrangeBag : this == Date ? HangingDate : this == GoatCheese ? GoatCheeseBag : this; }
+        }
+
+        // Fruit, or goat cheese, in a net bag.
+        internal bool IsBag
+        {
+            get { return this == AppleBag || this == OrangeBag || this == GoatCheeseBag; }
+        }
+
+        // Food that two loose pieces make into a stack in hand: a sausage stack, or a
+        // wheel of cheese.
+        internal bool Stacks
+        {
+            get { return this == Sausage || this == Cheese; }
         }
 
         // Loose pieces that only ever gather into their hanging kind: bananas into a
         // bunch, apples into a bag.
-        // Fruit that goes in a net bag.
-        internal bool IsBag
-        {
-            get { return this == AppleBag || this == OrangeBag; }
-        }
-
-        // Food that ties into a stack in hand, as well as hanging from a hook.
-        internal bool Stacks
-        {
-            get { return this == Sausage; }
-        }
-
         internal bool AlwaysHung
         {
-            get { return this == Banana || this == Apple || this == Orange || this == Date; }
+            get { return this == Banana || this == Apple || this == Orange || this == Date || this == GoatCheese; }
         }
 
         // Kinds that tie two loose pieces together. A banana only hangs.
@@ -395,7 +443,7 @@ namespace Dizzy.FirewoodBundle
 
         internal static bool AnyEnabled
         {
-            get { return Firewood.IsEnabled || Candle.IsEnabled || Sausage.IsEnabled || HangingSausage.IsEnabled || Banana.IsEnabled || Apple.IsEnabled || Orange.IsEnabled || Date.IsEnabled; }
+            get { return Firewood.IsEnabled || Candle.IsEnabled || Sausage.IsEnabled || HangingSausage.IsEnabled || Banana.IsEnabled || Apple.IsEnabled || Orange.IsEnabled || Date.IsEnabled || Cheese.IsEnabled || GoatCheese.IsEnabled; }
         }
 
         private static int PrefabIndex(ShipItem ship)
@@ -422,6 +470,11 @@ namespace Dizzy.FirewoodBundle
                 return SausageStacks.IsHanging(ship) ? AppleBag : Apple;
             if (ship is ShipItemFood && ship.name == SausageStacks.OrangeName)
                 return SausageStacks.IsHanging(ship) ? OrangeBag : Orange;
+            // A slice of cheese is named "cheese slice", so the name alone picks out the wedge.
+            if (ship is ShipItemFood && ship.name == SausageStacks.CheeseName)
+                return Cheese;
+            if (ship is ShipItemFood && ship.name == SausageStacks.GoatCheeseName)
+                return SausageStacks.IsHanging(ship) ? GoatCheeseBag : GoatCheese;
             // The date's item name is not "date", so it is known by its prefab number.
             if (ship is ShipItemFood && (ship.name == SausageStacks.DateName || PrefabIndex(ship) == SausageStacks.DatePrefab))
                 return SausageStacks.IsHanging(ship) ? HangingDate : Date;

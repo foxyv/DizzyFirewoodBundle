@@ -788,14 +788,14 @@ namespace Dizzy.FirewoodBundle
             }
         }
 
-        // G on a loose log, dried banana or dried apple lying out in the world gathers
-        // the loose ones of its kind near it into a bundle, bunch or bag in hand.
+        // G on a loose log, piece of dried fruit or wedge of cheese lying out in the world
+        // gathers the loose ones of its kind near it into a bundle in hand.
         internal const float GroundGatherRadius = 3f;
 
         internal static bool CanGatherGround(ShipItem piece)
         {
             BundleKind kind = KindOf(piece);
-            if (kind == null || (kind != BundleKind.Firewood && !kind.AlwaysHung))
+            if (kind == null || (kind != BundleKind.Firewood && kind != BundleKind.Cheese && !kind.AlwaysHung))
                 return false;
             if (!kind.IsEnabled || !kind.Hung.IsEnabled || !IsLoose(piece))
                 return false;

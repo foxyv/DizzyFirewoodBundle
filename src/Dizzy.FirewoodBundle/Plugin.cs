@@ -11,7 +11,7 @@ namespace Dizzy.FirewoodBundle
     {
         public const string PluginGuid = "com.dizzy.sailwind.firewoodbundle";
         public const string PluginName = "Dizzy Bundle Up";
-        public const string PluginVersion = "0.10.0";
+        public const string PluginVersion = "0.11.0";
 
         internal static ManualLogSource Log;
         internal static Plugin Instance;
@@ -51,6 +51,10 @@ namespace Dizzy.FirewoodBundle
                 + ", MaxBananas=" + FirewoodBundleConfig.MaxBananas.Value
                 + ", Apple Bags=" + FirewoodBundleConfig.ApplesEnabled.Value
                 + ", MaxApples=" + FirewoodBundleConfig.MaxApples.Value
+                + ", Cheese=" + FirewoodBundleConfig.CheeseEnabled.Value
+                + ", MaxCheese=" + FirewoodBundleConfig.MaxCheese.Value
+                + ", Goat Cheese=" + FirewoodBundleConfig.GoatCheeseEnabled.Value
+                + ", MaxGoatCheese=" + FirewoodBundleConfig.MaxGoatCheese.Value
                 + ", Orange Bags=" + FirewoodBundleConfig.OrangesEnabled.Value
                 + ", MaxOranges=" + FirewoodBundleConfig.MaxOranges.Value
                 + ", Dates=" + FirewoodBundleConfig.DatesEnabled.Value

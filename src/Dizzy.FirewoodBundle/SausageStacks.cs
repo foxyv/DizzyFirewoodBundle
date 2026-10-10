@@ -30,6 +30,14 @@ namespace Dizzy.FirewoodBundle
         internal const string EatenDate = "Cannot hang eaten dates";
         internal const string FreshOrange = "Only dried oranges go in a bag";
         internal const string EatenOrange = "Cannot bag eaten oranges";
+        internal const string CheeseName = "cheese";
+        internal const string FreshCheese = "Only dried or smoked cheese makes a wheel";
+        internal const string EatenCheese = "Cannot add eaten cheese to a wheel";
+        internal const string DifferentCheese = "Cannot mix different kinds of cheese";
+        internal const string GoatCheeseName = "goat cheese";
+        internal const string FreshGoatCheese = "Only dried or smoked goat cheese goes in a bag";
+        internal const string EatenGoatCheese = "Cannot bag eaten goat cheese";
+        internal const string DifferentGoatCheese = "Cannot mix different kinds of goat cheese";
         internal const string Unpreserved = "Cannot stack unpreserved sausages";
         internal const string DifferentKind = "Cannot stack different kinds of sausage";
         internal const string Eaten = "Cannot stack eaten sausages";
@@ -199,7 +207,17 @@ namespace Dizzy.FirewoodBundle
         {
             BundleKind kind = FirewoodPieces.KindOf(item);
             string words = KindWord(item) + " " + (kind != null ? kind.Plural : "sausages");
-            var label = new System.Text.StringBuilder(count + " ");
+            int number = count;
+            // Cheese that comes to whole wheels is counted in wheels: "Dried Cheese Wheel",
+            // "2 Dried Cheese Wheels". Anything else is counted in wedges.
+            if (kind == BundleKind.Cheese)
+            {
+                int perWheel = FirewoodBundleConfig.CheesePerWheel;
+                bool whole = count % perWheel == 0;
+                number = whole ? count / perWheel : count;
+                words = KindWord(item) + (whole ? (number == 1 ? " cheese wheel" : " cheese wheels") : " cheese wedges");
+            }
+            var label = new System.Text.StringBuilder(kind == BundleKind.Cheese && number == 1 ? "" : number + " ");
             bool start = true;
             for (int i = 0; i < words.Length; i++)
             {
@@ -214,6 +232,22 @@ namespace Dizzy.FirewoodBundle
         // Why these two cannot stack, or null when they can.
         internal static string Rejection(ShipItem held, ShipItem target)
         {
+            if (IsGoatCheese(held) && IsGoatCheese(target))
+            {
+                if (!IsPreserved(held) || !IsPreserved(target))
+                    return FreshGoatCheese;
+                if (!IsWhole(held) || !IsWhole(target))
+                    return EatenGoatCheese;
+                return KindWord(held) != KindWord(target) ? DifferentGoatCheese : null;
+            }
+            if (IsCheese(held) && IsCheese(target))
+            {
+                if (!IsPreserved(held) || !IsPreserved(target))
+                    return FreshCheese;
+                if (!IsWhole(held) || !IsWhole(target))
+                    return EatenCheese;
+                return KindWord(held) != KindWord(target) ? DifferentCheese : null;
+            }
             if (IsDate(held) && IsDate(target))
             {
                 if (!IsPreserved(held) || !IsPreserved(target))
@@ -255,6 +289,17 @@ namespace Dizzy.FirewoodBundle
             return kind == BundleKind.Sausage || kind == BundleKind.HangingSausage;
         }
 
+        internal static bool IsCheese(ShipItem item)
+        {
+            return FirewoodPieces.KindOf(item) == BundleKind.Cheese;
+        }
+
+        internal static bool IsGoatCheese(ShipItem item)
+        {
+            BundleKind kind = FirewoodPieces.KindOf(item);
+            return kind == BundleKind.GoatCheese || kind == BundleKind.GoatCheeseBag;
+        }
+
         internal static bool IsBanana(ShipItem item)
         {
             BundleKind kind = FirewoodPieces.KindOf(item);
@@ -286,6 +331,10 @@ namespace Dizzy.FirewoodBundle
             bool apple = IsApple(item);
             bool orange = IsOrange(item);
             bool date = IsDate(item);
+            if (IsCheese(item))
+                return !IsPreserved(item) ? FreshCheese : !IsWhole(item) ? EatenCheese : null;
+            if (IsGoatCheese(item))
+                return !IsPreserved(item) ? FreshGoatCheese : !IsWhole(item) ? EatenGoatCheese : null;
             if (!IsPreserved(item))
                 return date ? FreshDate : orange ? FreshOrange : apple ? FreshApple : banana ? FreshBanana : Unpreserved;
             if (!IsWhole(item))

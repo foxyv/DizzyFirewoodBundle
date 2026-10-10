@@ -3,7 +3,7 @@
     <TargetFramework>net472</TargetFramework>
     <AssemblyName>Dizzy.FirewoodBundle</AssemblyName>
     <Product>Dizzy Bundle Up</Product>
-    <Version>0.10.0</Version>
+    <Version>0.11.0</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
