@@ -127,7 +127,9 @@ namespace Dizzy.FirewoodBundle
                     continue;
 
                 BundleKind kind = KindOf(bundle);
-                int color = (ColorOf(bundle) + 1) % kind.ColorCount;
+                int color = kind.NextColor(ColorOf(bundle));
+                if (color == ColorOf(bundle))
+                    return;
                 WriteCount(bundle, CountOf(bundle), color);
                 FirewoodBundleBuilder.Recolor(bundle);
                 Plugin.Log.LogInfo(kind.BundleName + " " + kind.TieName.ToLowerInvariant() + " is now " + kind.ColorNames[color].ToLowerInvariant() + ".");

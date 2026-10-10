@@ -13,10 +13,48 @@ namespace Dizzy.FirewoodBundle
         private static readonly HashSet<int> ClaimedLamps = new HashSet<int>();
         private static float _pickedUpAt = -10f;
 
-        internal static bool IsHook(Component component)
+        // The game's own fishing hook, and Better Fishing's three lures, which carry the
+        // game's hook component. Lures string onto lines only while that mod is loaded.
+        // Any other mod's hook-like item is left alone.
+        internal const int HookPrefab = 99;
+        internal const string BetterFishingGuid = "com.raddude.betterfishing";
+        private const int FirstLurePrefab = 803;
+        private const int LastLurePrefab = 805;
+
+        internal static bool BetterFishingLoaded
+        {
+            get { return BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey(BetterFishingGuid); }
+        }
+
+        // Which hook or lure this is, by prefab number, or -1 when it is neither. A line
+        // only ever holds one kind: a hook strung onto a line of lures would come back
+        // off it as another lure.
+        internal static int KindOf(Component component)
         {
             ShipItem ship = FirewoodPieces.AsShip(component);
-            return ship is ShipItemFishingHook;
+            if (!(ship is ShipItemFishingHook))
+                return -1;
+            SaveablePrefab saveable = ship.GetComponent<SaveablePrefab>();
+            int prefab = saveable != null ? saveable.prefabIndex : -1;
+            if (prefab == HookPrefab)
+                return prefab;
+            return prefab >= FirstLurePrefab && prefab <= LastLurePrefab && BetterFishingLoaded ? prefab : -1;
+        }
+
+        internal static bool IsHook(Component component)
+        {
+            return KindOf(component) >= 0;
+        }
+
+        internal static bool IsLure(Component component)
+        {
+            return KindOf(component) >= FirstLurePrefab;
+        }
+
+        // "Hook" or "Lure", for the prompts.
+        internal static string Noun(Component component)
+        {
+            return IsLure(component) ? "Lure" : "Hook";
         }
 
         internal static int CountOf(ShipItem item)
@@ -54,10 +92,18 @@ namespace Dizzy.FirewoodBundle
             return stored > single || stored == single - 1;
         }
 
-        internal static string LookText(int count)
+        internal static string LookText(ShipItem item, int count)
         {
-            string hooks = count == 1 ? "1 hook" : count + " hooks";
-            return "hook line\n" + hooks;
+            if (!IsLure(item))
+            {
+                string hooks = count == 1 ? "1 hook" : count + " hooks";
+                return "hook line\n" + hooks;
+            }
+
+            // A line of lures is labelled with the lure's own name: "3 topwater lures".
+            ShipItem prefab = FirewoodPieces.PrefabOf(item);
+            string lure = prefab != null && !string.IsNullOrEmpty(prefab.name) ? prefab.name : "lure";
+            return "lure line\n" + count + " " + lure + (count == 1 ? "" : "s");
         }
 
         internal static bool Fits(int count)
@@ -73,6 +119,8 @@ namespace Dizzy.FirewoodBundle
         internal static bool CanTarget(ShipItem held, ShipItem target)
         {
             if (!IsHook(held) || !IsHook(target) || held == target)
+                return false;
+            if (KindOf(held) != KindOf(target))
                 return false;
             if (!held.sold || !target.sold || target.unclickable)
                 return false;
@@ -289,10 +337,29 @@ namespace Dizzy.FirewoodBundle
             if (count < 1)
                 return false;
 
-            rod.health = 1f;
-            MethodInfo update = AccessTools.Method(typeof(ShipItemFishingRod), "UpdateHook");
-            if (update != null)
-                update.Invoke(rod, null);
+            // Better Fishing replaces how a rod takes a hook: it shows the hook or lure it
+            // was handed and remembers which one. So with that mod the rod is handed a real
+            // one off the line and Better Fishing does the rest. Without it, the rod is
+            // simply marked as hooked.
+            if (BetterFishingLoaded)
+            {
+                ShipItem piece = SpawnSingle(line, rod.transform.position, rod.transform.rotation);
+                if (piece == null)
+                    return false;
+                rod.OnItemClick(piece);
+                if (rod.health <= 0f)
+                {
+                    Object.Destroy(piece.gameObject);
+                    return false;
+                }
+            }
+            else
+            {
+                rod.health = 1f;
+                MethodInfo update = AccessTools.Method(typeof(ShipItemFishingRod), "UpdateHook");
+                if (update != null)
+                    update.Invoke(rod, null);
+            }
 
             if (count <= 1)
             {
@@ -655,7 +722,7 @@ namespace Dizzy.FirewoodBundle
             if (!CanGather(hook))
                 return;
 
-            Gather(OpenCrateHolding(hook));
+            Gather(OpenCrateHolding(hook), KindOf(hook));
         }
 
         internal static bool CanGather(ShipItem hook)
@@ -663,7 +730,7 @@ namespace Dizzy.FirewoodBundle
             if (!IsSingleton(hook))
                 return false;
             ShipItemCrate crate = OpenCrateHolding(hook);
-            return crate != null && LooseHooks(crate) >= 2;
+            return crate != null && LooseHooks(crate, KindOf(hook)) >= 2;
         }
 
         private static ShipItem LookedAtHook()
@@ -691,7 +758,7 @@ namespace Dizzy.FirewoodBundle
             return inventory != null ? inventory.GetComponent<ShipItemCrate>() : null;
         }
 
-        private static int LooseHooks(ShipItemCrate crate)
+        private static int LooseHooks(ShipItemCrate crate, int kind)
         {
             CrateInventory inventory = crate.GetComponent<CrateInventory>();
             if (inventory == null || inventory.containedItems == null)
@@ -700,7 +767,7 @@ namespace Dizzy.FirewoodBundle
             int count = 0;
             for (int i = 0; i < inventory.containedItems.Count; i++)
             {
-                if (IsSingleton(inventory.containedItems[i]))
+                if (IsSingleton(inventory.containedItems[i]) && KindOf(inventory.containedItems[i]) == kind)
                     count++;
             }
 
@@ -712,7 +779,7 @@ namespace Dizzy.FirewoodBundle
             return IsHook(item) && !IsLine(item);
         }
 
-        private static void Gather(ShipItemCrate crate)
+        private static void Gather(ShipItemCrate crate, int kind)
         {
             CrateInventory inventory = crate.GetComponent<CrateInventory>();
             if (inventory == null || inventory.containedItems == null)
@@ -722,7 +789,7 @@ namespace Dizzy.FirewoodBundle
             for (int i = 0; i < inventory.containedItems.Count; i++)
             {
                 ShipItem item = inventory.containedItems[i];
-                if (IsSingleton(item))
+                if (IsSingleton(item) && KindOf(item) == kind)
                     singles.Add(item);
             }
 

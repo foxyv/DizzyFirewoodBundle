@@ -12,9 +12,12 @@ namespace Dizzy.FirewoodBundle
     // What can be tied into a two-handed bundle. Each kind only bundles with itself.
     internal sealed class BundleKind
     {
-        // The tie colors \ cycles through. Firewood starts on its natural cord brown.
-        private static readonly string[] DyeNames = { "Red", "Blue", "Green", "Gold", "White", "Black", "Purple", "Pink", "Orange", "Tan", "Brown" };
-        private static readonly Color[] Dyes =
+        // The built-in tie colors \ cycles through. Each is a numbered color in the
+        // config, where players can rename and recolor them and fill in spare ones of
+        // their own. A bundle saves its color as a place in its kind's list, so a color
+        // keeps its number for good.
+        internal static readonly string[] DefaultDyeNames = { "Red", "Blue", "Green", "Gold", "White", "Black", "Purple", "Pink", "Orange", "Tan", "Brown" };
+        internal static readonly Color[] DefaultDyes =
         {
             new Color(0.72f, 0.08f, 0.08f),
             new Color(0.12f, 0.25f, 0.65f),
@@ -29,12 +32,14 @@ namespace Dizzy.FirewoodBundle
             new Color(0.34f, 0.2f, 0.1f)
         };
 
-        // New colors go on the end, so a saved bundle keeps its color. Firewood already
-        // starts on its natural brown, so it skips the dyed one. Bags start from black
-        // and wrap round the first nine, then add the newer ones after.
-        private const int FirstDyes = 9;
-        private static readonly string[] BagColorNames = Join(StartAt("Black", Take(DyeNames, FirstDyes)), Skip(DyeNames, FirstDyes));
-        private static readonly Color[] BagColors = Join(StartAt(System.Array.IndexOf(DyeNames, "Black"), Take(Dyes, FirstDyes)), Skip(Dyes, FirstDyes));
+        // Firewood's own cord, before any dye. It comes first on a firewood bundle, and
+        // every tie color follows it.
+        private const string NaturalName = "Natural";
+        private static readonly Color NaturalCord = new Color(0.55f, 0.38f, 0.2f);
+        // A bag's net starts on the sixth tie color, black unless a player changes it,
+        // and wraps round the first nine. Colors after those follow in order.
+        private const int BagFirst = 5;
+        private const int BagWrap = 9;
 
         internal static readonly BundleKind Firewood = new BundleKind(
             "firewood bundle",
@@ -42,8 +47,8 @@ namespace Dizzy.FirewoodBundle
             "Log",
             "Bundle",
             "Cord",
-            Prepend("Brown", Take(DyeNames, DyeNames.Length - 1)),
-            Prepend(new Color(0.55f, 0.38f, 0.2f), Take(Dyes, Dyes.Length - 1)),
+            Prepend(NaturalName, DefaultDyeNames),
+            Prepend(NaturalCord, DefaultDyes),
             TieStyle.Cord,
             0.97f,
             true);
@@ -54,8 +59,8 @@ namespace Dizzy.FirewoodBundle
             "Candle",
             "Bundle",
             "Ribbon",
-            DyeNames,
-            Dyes,
+            DefaultDyeNames,
+            DefaultDyes,
             TieStyle.Ribbon,
             1.02f,
             true);
@@ -136,8 +141,8 @@ namespace Dizzy.FirewoodBundle
             "Apple",
             "Bag",
             "Net",
-            BagColorNames,
-            BagColors,
+            BagOrder(DefaultDyeNames),
+            BagOrder(DefaultDyes),
             TieStyle.None,
             1f,
             false);
@@ -161,8 +166,8 @@ namespace Dizzy.FirewoodBundle
             "Orange",
             "Bag",
             "Net",
-            BagColorNames,
-            BagColors,
+            BagOrder(DefaultDyeNames),
+            BagOrder(DefaultDyes),
             TieStyle.None,
             1f,
             false);
@@ -200,8 +205,8 @@ namespace Dizzy.FirewoodBundle
             "Goat Cheese",
             "Bag",
             "Net",
-            BagColorNames,
-            BagColors,
+            BagOrder(DefaultDyeNames),
+            BagOrder(DefaultDyes),
             TieStyle.None,
             1f,
             false);
@@ -238,8 +243,11 @@ namespace Dizzy.FirewoodBundle
         internal readonly string Single;
         internal readonly string Group;
         internal readonly string TieName;
-        internal readonly string[] ColorNames;
-        internal readonly Color[] Colors;
+        internal string[] ColorNames;
+        internal Color[] Colors;
+        // Which colors the color key stops on. A color a player has left unnamed is
+        // skipped, but keeps its place, so a bundle already tied in it still shows it.
+        internal bool[] ColorUsed;
         internal readonly TieStyle Tie;
         internal readonly float Pitch;
         internal readonly bool CountInAmount;
@@ -396,41 +404,57 @@ namespace Dizzy.FirewoodBundle
             return BundleName + "\n" + count + " " + Plural;
         }
 
-        // The same colors in the same order, starting from the named one, so a new
-        // bundle is tied in that color.
-        private static string[] StartAt(string first, string[] names)
+        // The tie colors in the order a bag's net cycles through them.
+        private static T[] BagOrder<T>(T[] all)
         {
-            return StartAt(System.Array.IndexOf(names, first), names);
-        }
-
-        private static T[] StartAt<T>(int first, T[] all)
-        {
-            var turned = new T[all.Length];
+            int wrap = Mathf.Min(BagWrap, all.Length);
+            int first = all.Length > BagFirst ? BagFirst : 0;
+            var ordered = new T[all.Length];
             for (int i = 0; i < all.Length; i++)
-                turned[i] = all[(first + i) % all.Length];
-            return turned;
+                ordered[i] = i < wrap ? all[(first + i) % wrap] : all[i];
+            return ordered;
         }
 
-        private static T[] Take<T>(T[] all, int count)
+        // The kinds whose tie or net takes a color.
+        internal static BundleKind[] Dyed
         {
-            var some = new T[count];
-            System.Array.Copy(all, some, count);
-            return some;
+            get { return new[] { Firewood, Candle, AppleBag, OrangeBag, GoatCheeseBag }; }
         }
 
-        private static T[] Skip<T>(T[] all, int count)
+        // Swaps in the tie colors from the config.
+        internal static void SetDyes(string[] names, Color[] colors, bool[] used)
         {
-            var rest = new T[all.Length - count];
-            System.Array.Copy(all, count, rest, 0, rest.Length);
-            return rest;
+            if (names == null || colors == null || used == null || names.Length == 0)
+                return;
+            if (names.Length != colors.Length || names.Length != used.Length)
+                return;
+            Firewood.ColorNames = Prepend(NaturalName, names);
+            Firewood.Colors = Prepend(NaturalCord, colors);
+            Firewood.ColorUsed = Prepend(true, used);
+            Candle.ColorNames = names;
+            Candle.Colors = colors;
+            Candle.ColorUsed = used;
+            BundleKind[] bags = { AppleBag, OrangeBag, GoatCheeseBag };
+            for (int i = 0; i < bags.Length; i++)
+            {
+                bags[i].ColorNames = BagOrder(names);
+                bags[i].Colors = BagOrder(colors);
+                bags[i].ColorUsed = BagOrder(used);
+            }
         }
 
-        private static T[] Join<T>(T[] first, T[] second)
+        // The color the color key moves to from this one: the next one a player has not
+        // left unnamed. The same color comes back when there is no other.
+        internal int NextColor(int current)
         {
-            var both = new T[first.Length + second.Length];
-            first.CopyTo(both, 0);
-            second.CopyTo(both, first.Length);
-            return both;
+            int count = ColorCount;
+            for (int step = 1; step <= count; step++)
+            {
+                int next = (current + step) % count;
+                if (ColorUsed == null || next >= ColorUsed.Length || ColorUsed[next])
+                    return next;
+            }
+            return current;
         }
 
         private static T[] Prepend<T>(T first, T[] rest)

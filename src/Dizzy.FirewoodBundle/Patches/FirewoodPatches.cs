@@ -634,7 +634,11 @@ namespace Dizzy.FirewoodBundle
     [HarmonyPatch(typeof(ShipItemFishingRod), nameof(ShipItemFishingRod.OnItemClick))]
     internal static class HookLineRodPatch
     {
-        // A line stays in hand. An empty rod takes one hook from it.
+        // A line stays in hand. An empty rod takes one hook from it. Better Fishing has
+        // a prefix here too that uses up whatever hook it is handed, so this one has to
+        // run first, or a whole line would go onto the rod as one hook.
+        [HarmonyPriority(Priority.First)]
+        [HarmonyBefore(HookLinePieces.BetterFishingGuid)]
         private static bool Prefix(ShipItemFishingRod __instance, PickupableItem heldItem, ref bool __result)
         {
             if (!FirewoodBundleConfig.HooksAreEnabled)
@@ -793,6 +797,8 @@ namespace Dizzy.FirewoodBundle
                     HangableItem hang = __instance.GetComponent<HangableItem>();
                     if (hang != null && hang.IsHanging())
                         hang.DisconnectJoint();
+                    // The crate has already let go of it by the time it is picked up.
+                    HookLineBuilder.RefitOutOfCrate(__instance);
                 }
             }
         }
@@ -815,7 +821,7 @@ namespace Dizzy.FirewoodBundle
 
             if (HookLinePieces.IsLine(__instance))
             {
-                __instance.lookText = HookLinePieces.LookText(HookLinePieces.CountOf(__instance));
+                __instance.lookText = HookLinePieces.LookText(__instance, HookLinePieces.CountOf(__instance));
                 __instance.description = "";
             }
         }
@@ -862,7 +868,7 @@ namespace Dizzy.FirewoodBundle
             {
                 if (HookLinePieces.IsLine(item))
                 {
-                    item.lookText = HookLinePieces.LookText(HookLinePieces.CountOf(item));
+                    item.lookText = HookLinePieces.LookText(item, HookLinePieces.CountOf(item));
                     item.description = "";
                     if (___extraText != null)
                         ___extraText.text = item.lookText;
@@ -878,7 +884,7 @@ namespace Dizzy.FirewoodBundle
                 bool line = HookLinePieces.IsLine(item);
                 if (line)
                 {
-                    item.lookText = HookLinePieces.LookText(hookCount);
+                    item.lookText = HookLinePieces.LookText(item, hookCount);
                     item.description = "";
                     if (___extraText != null)
                         ___extraText.text = item.lookText;
@@ -891,7 +897,8 @@ namespace Dizzy.FirewoodBundle
                     int heldCount = HookLinePieces.CountOf(held);
                     int room = FirewoodBundleConfig.HookLimit - hookCount;
                     bool heldLine = heldCount > 1 || HookLinePieces.IsLine(held);
-                    string action = "\nR String Hooks";
+                    string noun = HookLinePieces.Noun(item);
+                    string action = "\nR String " + noun + "s";
                     if (line && heldLine && room > 0 && heldCount > room)
                         action = "\nR Fill Line";
                     else if (!HookLinePieces.Fits(heldCount + hookCount))
@@ -899,7 +906,7 @@ namespace Dizzy.FirewoodBundle
                     else if (line)
                         action = "\nR Add to Line";
                     else if (heldCount > 1 && hookCount <= 1)
-                        action = "\nR Add Hook";
+                        action = "\nR Add " + noun;
                     ___controlsText.text = action;
                     if (___textLicon != null)
                         ___textLicon.gameObject.SetActive(false);
@@ -1002,7 +1009,9 @@ namespace Dizzy.FirewoodBundle
         {
             if (controls == null || !HookLinePieces.CanBaitRod(held, looked))
                 return false;
-            controls.text = "\nR Add Hook";
+            // The line is whichever of the two is not the rod.
+            Component line = HookLinePieces.IsHook(held) ? (Component)held : looked;
+            controls.text = "\nR Add " + HookLinePieces.Noun(line);
             if (textL != null)
                 textL.gameObject.SetActive(false);
             if (mouseL != null)
@@ -1019,7 +1028,7 @@ namespace Dizzy.FirewoodBundle
             if (controls == null)
                 return;
             if (FirewoodBundleConfig.HooksAreEnabled && HookLinePieces.CanGather(item))
-                AddPrompt(controls, "G Bundle Hooks");
+                AddPrompt(controls, "G Bundle " + HookLinePieces.Noun(item) + "s");
             // The bundle goes to hand, so the hand has to be empty.
             if (held == null && (FirewoodPieces.CanGatherPiece(item) || FirewoodPieces.CanGatherGround(item)))
                 AddPrompt(controls, FirewoodPieces.KindOf(item).GatherPrompt);
@@ -1096,7 +1105,7 @@ namespace Dizzy.FirewoodBundle
                 return;
 
             int hooks = HookLinePieces.CountOf(item);
-            slot.lookText = HookLinePieces.LookText(hooks);
+            slot.lookText = HookLinePieces.LookText(item, hooks);
             slot.description = "";
             Create(slot, hooks);
         }
