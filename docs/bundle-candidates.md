@@ -9,6 +9,7 @@ The number is the item's prefab ID in the game. Food comes from the game's own f
 - [x] Firewood (`108` is the crate): tied bundles, G from crates and the ground
 - [x] Candles (`131` is the crate): ribbon bundles that load lanterns
 - [x] Fishing hooks (`104` is the crate): strung on a line that hangs from a lamp hook
+- [x] Better Fishing lures (`803` spoon, `804` swimbait, `805` topwater): strung on lines of their own kind, only while that mod is loaded
 
 ## Non-food candidates
 

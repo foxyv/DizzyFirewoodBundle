@@ -83,6 +83,7 @@ A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepI
 - Hold a fishing hook and right-click another hook to string them on a line.
 - A line can hang from a lamp hook. An empty fishing rod takes one hook from a line.
 - Press **G** on a loose hook in an open crate to string the crate's loose hooks.
+- With the Better Fishing mod installed, its lures string onto lines the same way. Hooks and each kind of lure keep to their own lines.
 
 ### Topping up
 - Right-clicking a nearly full bundle, stack or line with one in your hands moves just enough over to fill it. The rest stay in your hands.
@@ -169,7 +170,7 @@ dotnet build src\Dizzy.FirewoodBundle\Dizzy.FirewoodBundle.csproj -c Release -p:
 To package a release zip into `dist\`, run:
 
 ```powershell
-.\scripts\package-release.ps1 -Version 0.11.0
+.\scripts\package-release.ps1 -Version 0.12.0
 ```
 
 ## License

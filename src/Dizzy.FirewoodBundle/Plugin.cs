@@ -6,12 +6,13 @@ namespace Dizzy.FirewoodBundle
 {
     [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
     [BepInDependency("com.dizzy.sailwind.fixes", BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency(HookLinePieces.BetterFishingGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInProcess("Sailwind.exe")]
     public class Plugin : BaseUnityPlugin
     {
         public const string PluginGuid = "com.dizzy.sailwind.firewoodbundle";
         public const string PluginName = "Dizzy Bundle Up";
-        public const string PluginVersion = "0.11.0";
+        public const string PluginVersion = "0.12.0";
 
         internal static ManualLogSource Log;
         internal static Plugin Instance;

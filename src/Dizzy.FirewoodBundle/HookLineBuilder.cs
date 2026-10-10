@@ -11,12 +11,15 @@ namespace Dizzy.FirewoodBundle
         private const string CordName = "HookLineCord";
 
         private static Material _lineMaterial;
+        // Lines whose collider was left as one hook's, because they were built in a crate.
+        private static readonly HashSet<int> StoredShape = new HashSet<int>();
 
         internal static void RestoreSingle(ShipItem item)
         {
             if (item == null)
                 return;
 
+            StoredShape.Remove(item.GetInstanceID());
             HookLinePieces.WriteCount(item, 1);
             ClearChildren(item);
             ReleaseHang(item);
@@ -68,6 +71,15 @@ namespace Dizzy.FirewoodBundle
             Vector3 side = Vector3.zero;
             side[sideAxis] = 1f;
             side = rotation * side;
+            // The string runs across the item, the way a line of hooks does. A hook is
+            // thin that way already. A lure is thin front to back, so it is turned to face
+            // along the string like the hooks; left alone, its line ran away from the
+            // holder instead of across.
+            if (Mathf.Abs(Vector3.Dot(side, Vector3.right)) < 0.99f)
+            {
+                rotation = Quaternion.FromToRotation(side, Vector3.right) * rotation;
+                side = Vector3.right;
+            }
 
             // Hooks sit close together on a bowed bottom, each one a little off the perfect arc.
             // The string rises from both ends to the origin, which is the hang point.
@@ -118,13 +130,19 @@ namespace Dizzy.FirewoodBundle
             }
             IncludeInLod(item, renderers);
 
-            item.lookText = HookLinePieces.LookText(count);
+            item.lookText = HookLinePieces.LookText(item, count);
             item.description = "";
             ApplyMass(item, count);
             if (StoredInCrate(item))
+            {
                 CopyPrefabCollider(item);
+                StoredShape.Add(item.GetInstanceID());
+            }
             else
+            {
                 FitLine(item, rack);
+                StoredShape.Remove(item.GetInstanceID());
+            }
             EnsureHang(item);
             FirewoodBundleBuilder.QuietHull(item);
         }
@@ -133,7 +151,19 @@ namespace Dizzy.FirewoodBundle
         {
             if (item == null)
                 return;
+            StoredShape.Remove(item.GetInstanceID());
             ReleaseCord(item);
+        }
+
+        // A line built or loaded inside a crate keeps one hook's collider while it is in
+        // there. Once it is out it needs the line's own: with one hook's, only the spot
+        // where that hook would hang can be looked at, which on a line of lures is little
+        // more than the string.
+        internal static void RefitOutOfCrate(ShipItem item)
+        {
+            if (item == null || !StoredShape.Contains(item.GetInstanceID()) || StoredInCrate(item))
+                return;
+            Apply(item);
         }
 
         internal static void Discard(ShipItem item)
