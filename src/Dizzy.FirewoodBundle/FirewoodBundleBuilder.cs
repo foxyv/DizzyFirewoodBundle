@@ -53,6 +53,10 @@ namespace Dizzy.FirewoodBundle
         // about a third out of balance, so it tips about 8 degrees.
         private const float RackTip = 25f;
         private const float AppleNeck = 0.012f;
+        // Colors of the mod's own parts: the string on hanging sausages, and the iron of
+        // a date rack.
+        private static readonly Color SausageString = new Color(0.82f, 0.7f, 0.52f);
+        private static readonly Color RackIron = new Color(0.06f, 0.06f, 0.06f);
         // A goat cheese net stands this far off the rounds, and allows this much up and
         // down for a round that is not lying quite level.
         private const float RoundGap = 0.004f;
@@ -676,9 +680,9 @@ namespace Dizzy.FirewoodBundle
             ClearHull(item);
             source.enabled = false;
             Material[] materials = source.sharedMaterials;
-            // Tan cord: the firewood palette's Tan, matte like cord rather than a ribbon.
-            // White stood out too brightly against the sausages.
-            Material cord = StringMaterial(BundleKind.Firewood, System.Array.IndexOf(BundleKind.Firewood.ColorNames, "Tan"));
+            // Tan cord, matte like cord rather than a ribbon. White stood out too brightly
+            // against the sausages.
+            Material cord = PlainMaterial("string", SausageString);
             var renderers = new List<Renderer>();
             var centers = new List<Vector3>(count);
             var turns = new List<Quaternion>(count);
@@ -693,7 +697,7 @@ namespace Dizzy.FirewoodBundle
             // Dates hang from a little iron rack instead: each bunch is a ring held out
             // from the middle cord by spokes, and the skewers hang straight down from it.
             bool rack = flip;
-            Material iron = rack ? StringMaterial(BundleKind.Firewood, System.Array.IndexOf(BundleKind.Firewood.ColorNames, "Black")) : null;
+            Material iron = rack ? PlainMaterial("iron", RackIron) : null;
             int lastRing = -1;
             Quaternion tip = Quaternion.identity;
 
@@ -2295,7 +2299,19 @@ namespace Dizzy.FirewoodBundle
             }
             if (color < 0 || color >= kind.ColorCount)
                 color = 0;
-            string key = kind.BundleName + "/" + color;
+            return TieMaterial(kind.BundleName + "/" + color, kind.Colors[color], kind.Ribbon);
+        }
+
+        // A material for one of the mod's own parts, such as the string on hanging
+        // sausages or the iron of a date rack. These are not tie colors, so they stay as
+        // they are when a player changes the tie color list.
+        private static Material PlainMaterial(string part, Color color)
+        {
+            return TieMaterial("part/" + part, color, false);
+        }
+
+        private static Material TieMaterial(string key, Color color, bool ribbon)
+        {
             Material cached;
             if (StringMaterials.TryGetValue(key, out cached) && cached != null)
                 return cached;
@@ -2307,22 +2323,40 @@ namespace Dizzy.FirewoodBundle
                 shader = Shader.Find("Unlit/Color");
             if (shader == null)
             {
-                Plugin.Log.LogWarning("Could not find a shader for the " + kind.BundleName + " tie.");
+                Plugin.Log.LogWarning("Could not find a shader for the tie " + key + ".");
                 return null;
             }
 
             var material = new Material(shader);
             material.name = StringName;
-            material.color = kind.Colors[color];
+            material.color = color;
             if (shader.name == "Standard")
             {
                 material.SetFloat("_Metallic", 0f);
                 // A ribbon is satin, a little shinier than cord.
-                material.SetFloat("_Glossiness", kind.Ribbon ? 0.35f : 0.12f);
+                material.SetFloat("_Glossiness", ribbon ? 0.35f : 0.12f);
             }
 
             StringMaterials[key] = material;
             return material;
+        }
+
+        // The tie colors changed in the config. Every tie already drawn shares its
+        // material with the others of its kind and color, so recoloring those shows at
+        // once on the bundles in the world.
+        internal static void RefreshTieColors()
+        {
+            BundleKind[] kinds = BundleKind.Dyed;
+            for (int k = 0; k < kinds.Length; k++)
+            {
+                BundleKind kind = kinds[k];
+                for (int color = 0; color < kind.ColorCount; color++)
+                {
+                    Material cached;
+                    if (StringMaterials.TryGetValue(kind.BundleName + "/" + color, out cached) && cached != null)
+                        cached.color = kind.Colors[color];
+                }
+            }
         }
 
         private static void ReleaseStringMesh(ShipItem item)

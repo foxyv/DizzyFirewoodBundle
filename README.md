@@ -19,8 +19,11 @@ A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepI
 - Right-click a bundle to take one candle off. Press **G** on a loose candle in an open crate to pick up a bundle.
 
 ### Tie colors
-- Hold or look at a firewood or candle bundle and press **\\** to change its tie color.
-- Candles: red, blue, green, gold, white, black, purple, pink, orange, tan and brown. Firewood: its natural brown, then the same colors up to tan. Apple, orange and goat cheese bags: the same eleven, starting from black.
+- Hold or look at a firewood or candle bundle, or a bag, and press **\\** to change its tie color.
+- Candles: red, blue, green, gold, white, black, purple, pink, orange, tan and brown. Firewood: its natural cord, then the same eleven. Apple, orange and goat cheese bags: the same eleven, starting from black.
+- Each color has a name and a value in the config's `Tie Colors` section. Rename or recolor any of them.
+- Colors 12 to 16 are spare. Give one a name and a value to add a color of your own.
+- Leave a color's name empty to take it out of the ones the key steps through. A bundle already tied in it keeps it.
 
 ### Sausages
 - Hold a smoked or dried sausage and right-click another of the same kind to stack them.
@@ -104,6 +107,8 @@ Settings are in `BepInEx\config\com.dizzy.sailwind.firewoodbundle.cfg`. The file
 | General | Stack Firewood | true | Turns firewood bundles on or off. |
 | General | MaxPieces | 100 | Most logs in a bundle. |
 | General | Tie Color Key | Backslash | Key that changes a bundle's tie color. |
+| Tie Colors | Color 01 Name to Color 16 Name | the eleven built-in names, then empty | Name of each tie color. An empty name leaves that color out. |
+| Tie Colors | Color 01 Value to Color 16 Value | the eleven built-in colors, then white | Each tie color, written as `RRGGBBAA`. |
 | Candles | Enabled | true | Turns candle bundles on or off. |
 | Candles | MaxCandles | 24 | Most candles in a bundle, up to 999. |
 | Candles | Spacing | 0.9 | Gap between candles in a bundle. |

@@ -8,6 +8,8 @@ namespace Dizzy.FirewoodBundle
         internal static ConfigEntry<bool> Enabled;
         internal static ConfigEntry<int> MaxPieces;
         internal static ConfigEntry<KeyCode> ColorKey;
+        internal static ConfigEntry<string>[] TieColorNames;
+        internal static ConfigEntry<Color>[] TieColorValues;
         internal static ConfigEntry<bool> CandlesEnabled;
         internal static ConfigEntry<int> MaxCandles;
         internal static ConfigEntry<float> CandleSpacingAmount;
@@ -296,6 +298,59 @@ namespace Dizzy.FirewoodBundle
             get { return HookLineLengthAmount != null ? HookLineLengthAmount.Value : 1f; }
         }
 
+        // How many numbered tie colors the config holds: the built-in ones, then spare
+        // ones for players to fill in. A bundle saves its color as one of these numbers.
+        internal const int TieColorSlots = 16;
+
+        private static void BindTieColors(ConfigFile config)
+        {
+            TieColorNames = new ConfigEntry<string>[TieColorSlots];
+            TieColorValues = new ConfigEntry<Color>[TieColorSlots];
+            for (int i = 0; i < TieColorSlots; i++)
+            {
+                string number = (i + 1).ToString("00");
+                bool builtIn = i < BundleKind.DefaultDyeNames.Length;
+                TieColorNames[i] = config.Bind(
+                    "Tie Colors",
+                    "Color " + number + " Name",
+                    builtIn ? BundleKind.DefaultDyeNames[i] : "",
+                    builtIn
+                        ? "Name of tie color " + (i + 1) + ", shown when you change a bundle's tie color. Leave it empty to take this color out of the ones the tie color key steps through."
+                        : "A spare tie color. Give it a name to add it to the ones the tie color key steps through.");
+                TieColorValues[i] = config.Bind(
+                    "Tie Colors",
+                    "Color " + number + " Value",
+                    builtIn ? BundleKind.DefaultDyes[i] : Color.white,
+                    "Tie color " + (i + 1) + ", written as RRGGBBAA. Bundles already tied in it change with it.");
+                TieColorNames[i].SettingChanged += (sender, args) => ApplyTieColors();
+                TieColorValues[i].SettingChanged += (sender, args) => ApplyTieColors();
+            }
+
+            ApplyTieColors();
+        }
+
+        // Hands the numbered tie colors to the bundle kinds. Every color keeps its number
+        // whatever a player does to it, so the color of a bundle already tied never
+        // moves to another one. A color with no name is only left out of the key's steps.
+        private static void ApplyTieColors()
+        {
+            var names = new string[TieColorSlots];
+            var colors = new Color[TieColorSlots];
+            var used = new bool[TieColorSlots];
+            for (int i = 0; i < TieColorSlots; i++)
+            {
+                string name = TieColorNames[i] != null && TieColorNames[i].Value != null ? TieColorNames[i].Value.Trim() : "";
+                used[i] = name.Length > 0;
+                names[i] = used[i] ? name : "Color " + (i + 1);
+                Color color = TieColorValues[i] != null ? TieColorValues[i].Value : Color.white;
+                color.a = 1f;
+                colors[i] = color;
+            }
+
+            BundleKind.SetDyes(names, colors, used);
+            FirewoodBundleBuilder.RefreshTieColors();
+        }
+
         internal static void Bind(ConfigFile config)
         {
             Enabled = config.Bind(
@@ -314,7 +369,9 @@ namespace Dizzy.FirewoodBundle
                 "General",
                 "Tie Color Key",
                 KeyCode.Backslash,
-                "Hold or look at a firewood or candle bundle and press this key to tie it with the next color. Firewood starts on brown cord, candles on a red ribbon.");
+                "Hold or look at a firewood or candle bundle, or a bag, and press this key to tie it with the next color. Firewood starts on its natural cord, candles on the first color, and bag nets on the sixth.");
+
+            BindTieColors(config);
 
             CandlesEnabled = config.Bind(
                 "Candles",
