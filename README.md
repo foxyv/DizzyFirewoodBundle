@@ -172,10 +172,16 @@ dotnet build src\Dizzy.FirewoodBundle\Dizzy.FirewoodBundle.csproj -c Release -p:
 
 `-p:DeployOnBuild=false` keeps the build from copying the DLL into the game folder.
 
+Collider shape and policy rules live in `Dizzy.FirewoodBundle.Core` (shipped next to the plugin DLL) and are covered by unit tests:
+
+```powershell
+dotnet test DizzyFirewoodBundle.sln -c Release
+```
+
 To package a release zip into `dist\`, run:
 
 ```powershell
-.\scripts\package-release.ps1 -Version 0.12.0
+.\scripts\package-release.ps1 -Version 0.12.1
 ```
 
 ## License

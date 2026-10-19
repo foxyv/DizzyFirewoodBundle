@@ -13,12 +13,13 @@ namespace Dizzy.FirewoodBundle
         private const string KnotName = "FirewoodBundleKnot";
         private const string BoxMeshName = "FirewoodBundleBox";
         private const string HullName = "BundleColliderHull";
+        private const string PieceName = "BundleColliderPiece";
         // Directions and heights the hull is measured in, how far it sits outside the
         // pieces, and how much of the base's width the core box takes.
         private const int HullSides = 12;
         private const int HullBands = 5;
         private const float HullMargin = 0.01f;
-        private const float CoreShare = 0.35f;
+        private const float CoreShare = BundleColliderMath.CoreShare;
         // A bag's flat foot is this share of its rim across, and its collider ends in a
         // ring this far out around the tie.
         private const float BagFoot = 0.7f;
@@ -276,7 +277,8 @@ namespace Dizzy.FirewoodBundle
             if (kind == BundleKind.Cheese && mesh != null && prefab != null)
                 item.holdDistance = prefab.holdDistance + mesh.bounds.size.x * 0.6f;
             int upAxis = longAxis == StackUpAxis ? (StackUpAxis + 1) % 3 : StackUpAxis;
-            FitColliders(item, centers, mesh, turns, upAxis);
+            bool loosePile = kind == BundleKind.Sausage && SausageStacks.WidthOf(item) == SausageStacks.PileWidth;
+            FitColliders(item, centers, mesh, turns, upAxis, loosePile);
             // Growing the physics shape while the hull is heeled over shoves the boat.
             // Ignore the hull capsule until the bundle is clear of it.
             QuietHull(item);
@@ -795,10 +797,15 @@ namespace Dizzy.FirewoodBundle
             if (prefab != null)
                 item.holdDistance = prefab.holdDistance + ring;
             ApplyMass(item, count);
-            Bounds bundle = BundleBounds(centers, mesh, turns);
-            bundle.Encapsulate(Vector3.zero);
-            bundle.Expand(0.01f);
-            FitBox(item, bundle);
+            if (rack)
+            {
+                Bounds bundle = BundleBounds(centers, mesh, turns);
+                bundle.Encapsulate(Vector3.zero);
+                bundle.Expand(BundleColliderMath.ExpandPad(ColliderStrategy.HangAabb));
+                FitBox(item, bundle);
+            }
+            else
+                FitHangingSausages(item, centers, turns, stick, upAxis, lowest);
             if (item.GetComponent<HangableItem>() == null)
                 item.gameObject.AddComponent<HangableItem>();
             QuietHull(item);
@@ -898,10 +905,11 @@ namespace Dizzy.FirewoodBundle
             if (prefab != null)
                 item.holdDistance = prefab.holdDistance + widest * 0.5f;
             ApplyMass(item, count);
-            Bounds bundle = BundleBounds(centers, mesh, turns);
-            bundle.Encapsulate(Vector3.zero);
-            bundle.Expand(0.01f);
-            FitBox(item, bundle);
+            // One capsule per banana, along the fruit. A hull of their boxes stands
+            // off the curved mesh, and that look mesh is a trigger the ray misses, so
+            // the crosshair only picked up the small core. The item's own capsule is
+            // the stalk, so a hanging bunch still meets the lamp hook.
+            FitBananaCapsules(item, centers, mesh, turns, upAxis, stalkRadius, lowest);
             if (item.GetComponent<HangableItem>() == null)
                 item.gameObject.AddComponent<HangableItem>();
             QuietHull(item);
@@ -934,47 +942,7 @@ namespace Dizzy.FirewoodBundle
             SaveablePrefab save = item.GetComponent<SaveablePrefab>();
             int seed = save != null ? save.instanceId : 0;
 
-            // Fill from the bottom: layer L holds baseLayer - L apples, at least one.
-            var layerSizes = new List<int>();
-            int left = count;
-            while (left > 0)
-            {
-                int size = Mathf.Min(left, Mathf.Max(1, baseLayer - layerSizes.Count));
-                layerSizes.Add(size);
-                left -= size;
-            }
-
-            // A bag stays at least three rows tall: too few for that at full width are
-            // shared out over three rows, the extra ones going to the lower rows.
-            if (count >= 3 && layerSizes.Count < 3)
-            {
-                layerSizes.Clear();
-                for (int row = 0; row < 3; row++)
-                    layerSizes.Add(count / 3 + (row < count % 3 ? 1 : 0));
-            }
-
-            // A lone apple on top looks lost, so it gets one from the layer under it.
-            int last = layerSizes.Count - 1;
-            if (last > 0 && layerSizes[last] == 1 && layerSizes[last - 1] > 2)
-            {
-                layerSizes[last] = 2;
-                layerSizes[last - 1]--;
-            }
-
-            // Two rounds of cheese stack rather than sit side by side, and four put their
-            // pair in the middle row, between two single rounds.
-            if (rounds && count == 2)
-            {
-                layerSizes.Clear();
-                layerSizes.Add(1);
-                layerSizes.Add(1);
-            }
-            if (rounds && layerSizes.Count == 3 && layerSizes[0] == 2 && layerSizes[1] == 1 && layerSizes[2] == 1)
-            {
-                layerSizes[0] = 1;
-                layerSizes[1] = 2;
-            }
-
+            List<int> layerSizes = BundleColliderMath.PackBagLayers(count, baseLayer, rounds);
             int layers = layerSizes.Count;
             float step = rounds ? apple.size.y * 1.03f : radius * 1.6f;
             float neck = -AppleTie;
@@ -1271,8 +1239,13 @@ namespace Dizzy.FirewoodBundle
             // deck. It reaches up to the tie, which sits inside the lamp hook's own collider:
             // the bag needs to touch the hook to hang itself back up after a reload.
             float widestAt = rounds ? layerY[0] - apple.extents.y * 0.79f : layerY[0];
+            // Even rings cut the flat rounds: the side is straight between a few
+            // shoulders, and a sample that misses one leaves the hull inside the cheese.
+            List<float> ringHeights = rounds
+                ? RoundRingHeights(profile, bottom, layerY, apple.extents.y)
+                : null;
             Bounds core;
-            Mesh hull = BagHull(item, profile, bottom, rim, widestAt, neck, out core);
+            Mesh hull = BagHull(item, profile, bottom, rim, widestAt, neck, ringHeights, out core);
             FitBox(item, core);
             if (hull != null)
                 AddHull(item, hull);
@@ -1281,26 +1254,61 @@ namespace Dizzy.FirewoodBundle
             QuietHull(item);
         }
 
-        // How wide a round of goat cheese is at a height above its middle, as shares of its
-        // half height and its widest radius. It is widest low on its side, draws in a
-        // little toward the top, and is bevelled at both faces.
         private static float RoundWidth(float height)
         {
-            if (height <= -0.79f)
-                return Mathf.Lerp(0.84f, 1f, Mathf.InverseLerp(-1f, -0.79f, height));
-            if (height <= 0.77f)
-                return Mathf.Lerp(1f, 0.9f, Mathf.InverseLerp(-0.79f, 0.77f, height));
-            return Mathf.Lerp(0.9f, 0.725f, Mathf.InverseLerp(0.77f, 1f, height));
+            return BundleColliderMath.RoundWidth(height);
         }
 
-        // How far from the middle a ring of this many apples sits so they just touch.
+        // Ring heights for a goat-cheese bag. Dense samples plus each round's shoulders
+        // go through the upper envelope, so the convex hull keeps the cheese and drops
+        // the straight runs between. The foot and the tie stay the first and last rings.
+        private static List<float> RoundRingHeights(
+            System.Func<float, Vector2, float> profile,
+            float bottom,
+            float[] layerY,
+            float half)
+        {
+            var sampleY = new List<float>();
+            const int dense = 32;
+            for (int i = 0; i <= dense; i++)
+                sampleY.Add(Mathf.Lerp(bottom, 0f, i / (float)dense));
+            for (int layer = 0; layer < layerY.Length; layer++)
+            {
+                for (int shoulder = 0; shoulder < BundleColliderMath.RoundShoulders.Length; shoulder++)
+                    sampleY.Add(layerY[layer] + half * BundleColliderMath.RoundShoulders[shoulder]);
+            }
+
+            sampleY.Sort();
+            var height = new List<float>(sampleY.Count);
+            var radius = new List<float>(sampleY.Count);
+            var way = new Vector2(1f, 0f);
+            for (int i = 0; i < sampleY.Count; i++)
+            {
+                if (height.Count > 0 && sampleY[i] - height[height.Count - 1] < 0.0005f)
+                    continue;
+                height.Add(sampleY[i]);
+                radius.Add(profile(sampleY[i], way));
+            }
+
+            // 16 rings at 12 sides stays under Unity's 255-vertex convex limit.
+            List<int> hull = BundleColliderMath.UpperHull(height, radius);
+            BundleColliderMath.LimitHull(height, radius, hull, 16);
+            var rings = new List<float> { bottom };
+            for (int i = 0; i < hull.Count; i++)
+            {
+                float at = height[hull[i]];
+                if (at <= bottom + 0.0005f || at >= -0.0005f)
+                    continue;
+                rings.Add(at);
+            }
+
+            rings.Add(0f);
+            return rings;
+        }
+
         private static float RingRadius(int size, float radius)
         {
-            if (size <= 1)
-                return 0f;
-            if (size >= 7)
-                return radius * 2f;
-            return radius / Mathf.Sin(Mathf.PI / size);
+            return BundleColliderMath.RingRadius(size, radius);
         }
 
         // A strand of net lies on the bag's surface, so its tube is framed by the way
@@ -2528,16 +2536,38 @@ namespace Dizzy.FirewoodBundle
             return false;
         }
 
-        private static void FitColliders(ShipItem item, List<Vector3> centers, Mesh mesh, List<Quaternion> turns, int upAxis)
+        private static void ApplyCapsule(GameObject host, int direction, Vector3 center, float radius, float height)
+        {
+            if (host == null)
+                return;
+            CapsuleCollider capsule = host.GetComponent<CapsuleCollider>();
+            if (capsule == null)
+                return;
+            capsule.direction = direction;
+            capsule.center = center;
+            capsule.radius = radius;
+            capsule.height = height;
+        }
+
+        private static void FitColliders(ShipItem item, List<Vector3> centers, Mesh mesh, List<Quaternion> turns, int upAxis, bool loosePile)
         {
             ClearHull(item);
-            // A tree or pile is round and narrows toward the top, so a box around it is
-            // mostly empty air at its corners. It gets a convex hull that wraps the pieces,
-            // and its own box shrinks to a core inside the base.
-            if (turns != null && mesh != null && centers.Count > 1)
+            bool hasTurns = turns != null && mesh != null && centers.Count > 1;
+            ColliderStrategy strategy = BundleColliderMath.ChooseStrategy(false, false, false, hasTurns, loosePile);
+            // A tree is round and narrows toward the top, so a box around it is mostly
+            // empty air at its corners. It gets a convex hull that wraps the pieces,
+            // and its own box shrinks to a core inside the base. A pile is looser: that
+            // hull is the air between the sausages, so each sausage keeps its own box.
+            if (strategy == ColliderStrategy.PieceBoxes && turns != null && mesh != null && centers.Count > 0)
+            {
+                FitPieceBoxes(item, centers, mesh, turns, upAxis);
+                return;
+            }
+
+            if (strategy == ColliderStrategy.Hull)
             {
                 Bounds core;
-                Mesh hull = HullMesh(item, centers, mesh, turns, upAxis, out core);
+                Mesh hull = HullMesh(item, centers, mesh, turns, upAxis, false, out core);
                 FitBox(item, core);
                 if (hull != null)
                     AddHull(item, hull);
@@ -2545,8 +2575,166 @@ namespace Dizzy.FirewoodBundle
             }
 
             Bounds bundle = BundleBounds(centers, mesh, turns);
-            bundle.Expand(0.04f);
+            bundle.Expand(BundleColliderMath.ExpandPad(strategy));
             FitBox(item, bundle);
+        }
+
+        // One box per sausage, posed with it, plus a short slab under the ones that
+        // touch the deck so the heap sits flat instead of rocking on a corner.
+        private static void FitPieceBoxes(ShipItem item, List<Vector3> centers, Mesh mesh, List<Quaternion> turns, int upAxis)
+        {
+            Bounds stick = mesh.bounds;
+            float reach = Mathf.Min(stick.size.x, Mathf.Min(stick.size.y, stick.size.z)) * 0.5f;
+            var corners = new List<ColliderVec3>(centers.Count * 8);
+            for (int i = 0; i < centers.Count; i++)
+            {
+                Quaternion turn = turns[i];
+                AddPieceBox(item, centers[i], turn, stick.center, stick.size);
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    Vector3 point = centers[i] + turn * new Vector3(
+                        (corner & 1) == 0 ? stick.min.x : stick.max.x,
+                        (corner & 2) == 0 ? stick.min.y : stick.max.y,
+                        (corner & 4) == 0 ? stick.min.z : stick.max.z);
+                    corners.Add(new ColliderVec3(point.x, point.y, point.z));
+                }
+            }
+
+            ColliderBounds stand = BundleColliderMath.PileStand(corners, upAxis, reach);
+            FitBox(
+                item,
+                new Bounds(
+                    new Vector3(stand.Center.X, stand.Center.Y, stand.Center.Z),
+                    new Vector3(stand.Size.X, stand.Size.Y, stand.Size.Z)));
+        }
+
+        // One box per hanging sausage. The item's own box is the middle string, from
+        // the pin to the lowest knot, so a reload still meets the lamp hook. A box
+        // around the whole bunch is the air between the sausages.
+        private static void FitHangingSausages(ShipItem item, List<Vector3> centers, List<Quaternion> turns, Bounds stick, int upAxis, float lowest)
+        {
+            ClearHull(item);
+            for (int i = 0; i < centers.Count; i++)
+                AddPieceBox(item, centers[i], turns[i], stick.center, stick.size);
+
+            float thickness = HangCord * 2f;
+            Vector3 end = Vector3.zero;
+            end[upAxis] = lowest;
+            Vector3 size = new Vector3(thickness, thickness, thickness);
+            size[upAxis] = Mathf.Max(Mathf.Abs(lowest), thickness);
+            FitBox(item, new Bounds(end * 0.5f, size));
+        }
+
+        // Each banana keeps the capsule that fits its mesh. The item's own capsule
+        // becomes the stalk, from the pin down to the lowest hand.
+        private static void FitBananaCapsules(ShipItem item, List<Vector3> centers, Mesh mesh, List<Quaternion> turns, int upAxis, float stalkRadius, float lowest)
+        {
+            ClearHull(item);
+            Bounds stick = mesh.bounds;
+            int direction;
+            ColliderVec3 center;
+            float radius;
+            float height;
+            BundleColliderMath.CapsuleFit(
+                stick.size.x,
+                stick.size.y,
+                stick.size.z,
+                stick.center.x,
+                stick.center.y,
+                stick.center.z,
+                out direction,
+                out center,
+                out radius,
+                out height);
+            Vector3 capsuleCenter = new Vector3(center.X, center.Y, center.Z);
+            for (int i = 0; i < centers.Count; i++)
+                AddPieceCapsule(item, centers[i], turns[i], direction, capsuleCenter, radius, height);
+
+            if (stalkRadius < 0.006f)
+                stalkRadius = 0.006f;
+            Vector3 stalkEnd = Vector3.zero;
+            stalkEnd[upAxis] = lowest - stalkRadius * 3f;
+            Vector3 stalkCenter = stalkEnd * 0.5f;
+            float stalkLength = Mathf.Max(stalkEnd.magnitude, stalkRadius * 2f);
+            ApplyCapsule(item.gameObject, upAxis, stalkCenter, stalkRadius, stalkLength);
+            if (item.itemRigidbodyC != null)
+                ApplyCapsule(item.itemRigidbodyC.gameObject, upAxis, stalkCenter, stalkRadius, stalkLength);
+        }
+
+        private static void AddPieceCapsule(ShipItem item, Vector3 localPosition, Quaternion localRotation, int direction, Vector3 center, float radius, float height)
+        {
+            Collider rootCollider = item.GetComponent<Collider>();
+            var shape = new GameObject(PieceName);
+            shape.tag = "ItemSubcollider";
+            SetLookLayer(shape, item);
+            shape.transform.SetParent(item.transform, false);
+            shape.transform.localPosition = localPosition;
+            shape.transform.localRotation = localRotation;
+            CapsuleCollider capsule = shape.AddComponent<CapsuleCollider>();
+            capsule.direction = direction;
+            capsule.center = center;
+            capsule.radius = radius;
+            capsule.height = height;
+            capsule.isTrigger = rootCollider != null && rootCollider.isTrigger;
+
+            ItemRigidbody body = item.itemRigidbodyC;
+            if (body == null || BodyField == null || BodyField.GetValue(body) == null || SubcollidersField == null)
+                return;
+            var subcolliders = SubcollidersField.GetValue(body) as List<Collider>;
+            if (subcolliders == null)
+            {
+                subcolliders = new List<Collider>();
+                SubcollidersField.SetValue(body, subcolliders);
+            }
+
+            var twin = new GameObject(PieceName);
+            twin.layer = 2;
+            twin.transform.SetParent(body.transform, false);
+            twin.transform.localPosition = localPosition;
+            twin.transform.localRotation = localRotation;
+            CapsuleCollider twinCapsule = twin.AddComponent<CapsuleCollider>();
+            twinCapsule.direction = direction;
+            twinCapsule.center = center;
+            twinCapsule.radius = radius;
+            twinCapsule.height = height;
+            twinCapsule.isTrigger = item.held != null;
+            subcolliders.Add(twinCapsule);
+        }
+
+        private static void AddPieceBox(ShipItem item, Vector3 localPosition, Quaternion localRotation, Vector3 center, Vector3 size)
+        {
+            Collider rootCollider = item.GetComponent<Collider>();
+            var shape = new GameObject(PieceName);
+            shape.tag = "ItemSubcollider";
+            SetLookLayer(shape, item);
+            shape.transform.SetParent(item.transform, false);
+            shape.transform.localPosition = localPosition;
+            shape.transform.localRotation = localRotation;
+            BoxCollider box = shape.AddComponent<BoxCollider>();
+            box.center = center;
+            box.size = size;
+            box.isTrigger = rootCollider != null && rootCollider.isTrigger;
+
+            ItemRigidbody body = item.itemRigidbodyC;
+            if (body == null || BodyField == null || BodyField.GetValue(body) == null || SubcollidersField == null)
+                return;
+            var subcolliders = SubcollidersField.GetValue(body) as List<Collider>;
+            if (subcolliders == null)
+            {
+                subcolliders = new List<Collider>();
+                SubcollidersField.SetValue(body, subcolliders);
+            }
+
+            var twin = new GameObject(PieceName);
+            twin.layer = 2;
+            twin.transform.SetParent(body.transform, false);
+            twin.transform.localPosition = localPosition;
+            twin.transform.localRotation = localRotation;
+            BoxCollider twinBox = twin.AddComponent<BoxCollider>();
+            twinBox.center = center;
+            twinBox.size = size;
+            twinBox.isTrigger = item.held != null;
+            subcolliders.Add(twinBox);
         }
 
         private static void FitBox(ShipItem item, Bounds bundle)
@@ -2565,7 +2753,7 @@ namespace Dizzy.FirewoodBundle
         // heights, how far they go in HullSides directions around the up axis. Each band
         // becomes a ring of points just outside them, and the collider wraps every ring.
         // The core is a box well inside the bottom band, for the item's own collider.
-        private static Mesh HullMesh(ShipItem item, List<Vector3> centers, Mesh mesh, List<Quaternion> turns, int upAxis, out Bounds core)
+        private static Mesh HullMesh(ShipItem item, List<Vector3> centers, Mesh mesh, List<Quaternion> turns, int upAxis, bool reachOrigin, out Bounds core)
         {
             Bounds stick = mesh.bounds;
             int axisA = (upAxis + 1) % 3;
@@ -2585,6 +2773,15 @@ namespace Dizzy.FirewoodBundle
                     low = Mathf.Min(low, point[upAxis]);
                     high = Mathf.Max(high, point[upAxis]);
                 }
+            }
+
+            // The pin, so a hanging bunch still overlaps the lamp hook after a reload.
+            // One point tapers the hull to the hook instead of padding it out.
+            if (reachOrigin)
+            {
+                corners.Add(Vector3.zero);
+                low = Mathf.Min(low, 0f);
+                high = Mathf.Max(high, 0f);
             }
 
             int bands = Mathf.Clamp(Mathf.CeilToInt((high - low) / Mathf.Max(stick.size[upAxis] * 2f, 0.01f)), 1, HullBands);
@@ -2684,16 +2881,33 @@ namespace Dizzy.FirewoodBundle
             float rim,
             float widest,
             float neck,
+            List<float> ringHeights,
             out Bounds core)
         {
             float turn = Mathf.PI * 2f / HullSides;
             float sinTurn = Mathf.Sin(turn);
             // The strands lie on the outside of the shape the net is drawn around.
             float margin = NetWidth * 2f;
-            var heights = new List<float> { bottom, rim, widest };
-            for (int step = 1; step <= 5; step++)
-                heights.Add(Mathf.Lerp(widest, neck, step / 5f));
-            heights.Add(0f);
+            List<float> heights = ringHeights;
+            if (heights == null || heights.Count < 2)
+            {
+                heights = new List<float> { bottom, rim, widest };
+                for (int step = 1; step <= 5; step++)
+                    heights.Add(Mathf.Lerp(widest, neck, step / 5f));
+                heights.Add(0f);
+            }
+
+            int coreRing = 0;
+            float coreDist = float.MaxValue;
+            for (int i = 0; i < heights.Count; i++)
+            {
+                float dist = Mathf.Abs(heights[i] - widest);
+                if (dist < coreDist)
+                {
+                    coreDist = dist;
+                    coreRing = i;
+                }
+            }
 
             var vertices = new List<Vector3>(heights.Count * HullSides);
             var triangles = new List<int>((heights.Count - 1) * HullSides * 6);
@@ -2715,20 +2929,20 @@ namespace Dizzy.FirewoodBundle
                 }
 
                 // Box inside the bottom layer: its reach both ways across the bag.
-                if (ring == 2)
+                if (ring == coreRing)
                 {
                     int quarter = HullSides / 4;
-                    float plusX = reach[0];
-                    float minusX = reach[quarter * 2];
-                    float plusZ = reach[quarter];
-                    float minusZ = reach[quarter * 3];
-                    float coreHeight = Mathf.Max(0.02f, Mathf.Min((widest - rim) * 2f, (neck - rim) * 0.5f));
+                    ColliderBounds bagCore = BundleColliderMath.BagCoreBounds(
+                        reach[0],
+                        reach[quarter],
+                        reach[quarter * 2],
+                        reach[quarter * 3],
+                        rim,
+                        widest,
+                        neck);
                     core = new Bounds(
-                        new Vector3((plusX - minusX) * 0.5f, rim + coreHeight * 0.5f, (plusZ - minusZ) * 0.5f),
-                        new Vector3(
-                            Mathf.Max(0.05f, (plusX + minusX) * CoreShare),
-                            coreHeight,
-                            Mathf.Max(0.05f, (plusZ + minusZ) * CoreShare)));
+                        new Vector3(bagCore.Center.X, bagCore.Center.Y, bagCore.Center.Z),
+                        new Vector3(bagCore.Size.X, bagCore.Size.Y, bagCore.Size.Z));
                 }
 
                 for (int k = 0; k < HullSides; k++)
@@ -2790,7 +3004,7 @@ namespace Dizzy.FirewoodBundle
             Collider rootCollider = item.GetComponent<Collider>();
             var shape = new GameObject(HullName);
             shape.tag = "ItemSubcollider";
-            shape.layer = item.gameObject.layer;
+            SetLookLayer(shape, item);
             shape.transform.SetParent(item.transform, false);
             MeshCollider collider = shape.AddComponent<MeshCollider>();
             collider.convex = true;
@@ -2829,13 +3043,44 @@ namespace Dizzy.FirewoodBundle
             DestroyHull(body.transform, subcolliders);
         }
 
-        // The body's own copy of the hull is named "<HullName>(Clone)".
+        // Pickup moves the bag to the held layer and drop moves it back. Only the bag
+        // itself moves. A hull or piece collider built in the hand stays where it was
+        // born, and the look ray then misses the net and hits the small core.
+        internal static void MatchLookLayer(ShipItem item)
+        {
+            if (item == null)
+                return;
+            int layer = BundleColliderMath.LookSurfaceLayer(item.gameObject.layer);
+            Transform root = item.transform;
+            for (int i = 0; i < root.childCount; i++)
+            {
+                GameObject child = root.GetChild(i).gameObject;
+                if (!IsGeneratedCollider(child.name) || child.layer == layer)
+                    continue;
+                child.layer = layer;
+            }
+        }
+
+        private static void SetLookLayer(GameObject shape, ShipItem item)
+        {
+            if (shape == null || item == null)
+                return;
+            shape.layer = BundleColliderMath.LookSurfaceLayer(item.gameObject.layer);
+        }
+
+        // The body's own copy of a generated collider is named "<name>(Clone)".
+        private static bool IsGeneratedCollider(string name)
+        {
+            return name.StartsWith(HullName, System.StringComparison.Ordinal)
+                || name.StartsWith(PieceName, System.StringComparison.Ordinal);
+        }
+
         private static void DestroyHull(Transform parent, List<Collider> subcolliders)
         {
             for (int i = parent.childCount - 1; i >= 0; i--)
             {
                 Transform child = parent.GetChild(i);
-                if (!child.name.StartsWith(HullName, System.StringComparison.Ordinal))
+                if (!IsGeneratedCollider(child.name))
                     continue;
                 // The body sets every listed collider's trigger while held, so a destroyed
                 // one must leave the list first.

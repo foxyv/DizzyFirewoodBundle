@@ -60,6 +60,8 @@ namespace Dizzy.FirewoodBundle
                         AimAtNailedBundle(__instance, ___debugEditorPointer, ___raycastRay, ref ___pointedAtButton, ref ___currentLookDistance);
                     if (FirewoodBundleConfig.HooksAreEnabled)
                         AimAtHangingLine(__instance, ___debugEditorPointer, ___raycastRay, ref ___pointedAtButton, ref ___currentLookDistance);
+                    if (BundleKind.AppleBag.IsEnabled || BundleKind.OrangeBag.IsEnabled || BundleKind.GoatCheeseBag.IsEnabled)
+                        AimAtHangingBag(__instance, ___debugEditorPointer, ___raycastRay, ref ___pointedAtButton, ref ___currentLookDistance);
                 }
                 return;
             }
@@ -346,6 +348,80 @@ namespace Dizzy.FirewoodBundle
             currentLookDistance = nearest;
         }
 
+        // A lamp hook's box is taller than a short bag and covers the pin, so the single
+        // look ray hits the hook and the cheese behind it is never the pickup. A hanging
+        // bag on that ray is the target when nothing else stands in front of it.
+        private static void AimAtHangingBag(
+            GoPointer pointer,
+            bool debugEditorPointer,
+            Ray raycastRay,
+            ref GoPointerButton pointedAtButton,
+            ref float currentLookDistance)
+        {
+            Ray ray = FirewoodPieces.MakeRay(debugEditorPointer, raycastRay);
+            int count = Physics.RaycastNonAlloc(
+                ray,
+                Hits,
+                FirewoodPieces.Reach,
+                FirewoodPieces.LayerMask,
+                QueryTriggerInteraction.Collide);
+            var distances = new List<float>(count);
+            var kinds = new List<BagLookHit>(count);
+            var targets = new List<ShipItem>(count);
+            for (int i = 0; i < count; i++)
+            {
+                float distance = Hits[i].distance;
+                GoPointerButton button = ButtonOf(Hits[i].collider);
+                ShipItem ship = button as ShipItem;
+                distances.Add(distance);
+                if (ship != null)
+                {
+                    BundleKind kind = FirewoodPieces.KindOf(ship);
+                    HangableItem hang = ship.GetComponent<HangableItem>();
+                    if (kind != null && kind.IsBag && hang != null && hang.IsHanging())
+                    {
+                        kinds.Add(BagLookHit.HangingBag);
+                        targets.Add(ship);
+                        continue;
+                    }
+
+                    if (ship is ShipItemLampHook)
+                    {
+                        kinds.Add(BagLookHit.LampHook);
+                        targets.Add(null);
+                        continue;
+                    }
+                }
+
+                kinds.Add(BagLookHit.Other);
+                targets.Add(null);
+            }
+
+            bool lookingAtBag = false;
+            for (int i = 0; i < targets.Count; i++)
+            {
+                if (targets[i] != null && targets[i] == pointedAtButton)
+                    lookingAtBag = true;
+            }
+
+            int aim = BundleColliderMath.HangingBagToAim(
+                distances,
+                kinds,
+                pointedAtButton != null,
+                currentLookDistance,
+                pointedAtButton is ShipItemLampHook,
+                lookingAtBag);
+            if (aim < 0)
+                return;
+
+            ShipItem bag = targets[aim];
+            if (pointedAtButton != null)
+                pointedAtButton.ForceUnlook();
+            pointedAtButton = bag;
+            bag.Look(pointer);
+            currentLookDistance = distances[aim];
+        }
+
         private static GoPointerButton ButtonOf(Collider collider)
         {
             Collider source = collider;
@@ -435,6 +511,38 @@ namespace Dizzy.FirewoodBundle
             if (held.AllowOnItemClick(button))
                 return true;
             return button.GetComponent<ShipItem>() == null && button.GetComponent<GPButtonBed>() == null;
+        }
+    }
+
+    // A bag rebuilt in the hand is on the held layer. Pickup puts the whole bag
+    // there, including a hull that was built in the world.
+    [HarmonyPatch(typeof(GoPointer), "PickUpItem")]
+    internal static class BundleLookLayerPickupPatch
+    {
+        private static void Postfix(PickupableItem item)
+        {
+            ShipItem ship = item as ShipItem;
+            if (ship == null && item != null)
+                ship = item.GetComponent<ShipItem>();
+            FirewoodBundleBuilder.MatchLookLayer(ship);
+        }
+    }
+
+    // Drop and hang put the bag back on the world layer and leave the hull behind,
+    // so the look ray misses the net and hits only the small core. The hull follows
+    // the bag. The dropped item is cleared before the postfix, so the prefix keeps it.
+    [HarmonyPatch(typeof(GoPointer), "DropItem")]
+    internal static class BundleLookLayerDropPatch
+    {
+        private static void Prefix(GoPointer __instance, ref ShipItem __state)
+        {
+            PickupableItem held = __instance != null ? __instance.GetHeldItem() : null;
+            __state = held != null ? held.GetComponent<ShipItem>() : null;
+        }
+
+        private static void Postfix(ShipItem __state)
+        {
+            FirewoodBundleBuilder.MatchLookLayer(__state);
         }
     }
 
