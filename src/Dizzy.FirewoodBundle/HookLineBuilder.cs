@@ -551,7 +551,7 @@ namespace Dizzy.FirewoodBundle
         private static bool StoredInCrate(ShipItem item)
         {
             SaveablePrefab save = item.GetComponent<SaveablePrefab>();
-            return save != null && save.currentCrateId != 0;
+            return BundleColliderMath.UsePrefabColliderInCrate(save != null ? save.currentCrateId : 0);
         }
 
         private static void CopyPrefabCollider(ShipItem item)
@@ -568,11 +568,9 @@ namespace Dizzy.FirewoodBundle
         {
             ShipItem prefab = FirewoodPieces.PrefabOf(item);
             float baseMass = prefab != null ? prefab.mass : item.mass;
-            if (baseMass <= 0f)
-                baseMass = 0.2f;
             // Item boxes accept an item only when its mass is 2 or less.
             // A long line stays inside that limit so it can be put away.
-            item.mass = Mathf.Min(baseMass * count, 2f);
+            item.mass = BundleColliderMath.HookLineMass(baseMass, count);
 
             ItemRigidbody body = item.itemRigidbodyC;
             if (body == null)
@@ -607,20 +605,25 @@ namespace Dizzy.FirewoodBundle
             CapsuleCollider capsule = host.GetComponent<CapsuleCollider>();
             if (capsule != null)
             {
-                int direction = 1;
-                if (bounds.size.x >= bounds.size.y && bounds.size.x >= bounds.size.z)
-                    direction = 0;
-                else if (bounds.size.z >= bounds.size.y)
-                    direction = 2;
+                int direction;
+                ColliderVec3 center;
+                float radius;
+                float height;
+                BundleColliderMath.CapsuleFit(
+                    bounds.size.x,
+                    bounds.size.y,
+                    bounds.size.z,
+                    bounds.center.x,
+                    bounds.center.y,
+                    bounds.center.z,
+                    out direction,
+                    out center,
+                    out radius,
+                    out height);
                 capsule.direction = direction;
-                capsule.center = bounds.center;
-                float radius = direction == 0
-                    ? Mathf.Max(bounds.extents.y, bounds.extents.z)
-                    : direction == 2
-                        ? Mathf.Max(bounds.extents.x, bounds.extents.y)
-                        : Mathf.Max(bounds.extents.x, bounds.extents.z);
+                capsule.center = new Vector3(center.X, center.Y, center.Z);
                 capsule.radius = radius;
-                capsule.height = Mathf.Max(bounds.size[direction], radius * 2f);
+                capsule.height = height;
             }
 
             MeshCollider meshCollider = host.GetComponent<MeshCollider>();

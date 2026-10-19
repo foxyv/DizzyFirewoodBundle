@@ -1,8 +1,8 @@
 # Packages Dizzy Bundle Up for GitHub Releases.
-# Usage: .\scripts\package-release.ps1 [-Version 0.12.0]
+# Usage: .\scripts\package-release.ps1 [-Version 0.12.1]
 
 param(
-    [string]$Version = "0.12.0"
+    [string]$Version = "0.12.1"
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,6 +10,7 @@ $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $root
 
 $dll = "src\Dizzy.FirewoodBundle\bin\Release\Dizzy.FirewoodBundle.dll"
+$coreDll = "src\Dizzy.FirewoodBundle\bin\Release\Dizzy.FirewoodBundle.Core.dll"
 # Always rebuild so an old DLL is never zipped.
 Write-Host "Building Dizzy.FirewoodBundle Release..."
 dotnet build src\Dizzy.FirewoodBundle\Dizzy.FirewoodBundle.csproj -c Release -p:DeployOnBuild=false
@@ -19,6 +20,9 @@ if ($LASTEXITCODE -ne 0) {
 
 if (-not (Test-Path $dll)) {
     throw "Missing $dll - build failed."
+}
+if (-not (Test-Path $coreDll)) {
+    throw "Missing $coreDll - build failed."
 }
 
 $staging = "dist\Dizzy.FirewoodBundle-$Version"
@@ -30,6 +34,7 @@ if (Test-Path $staging) {
 }
 New-Item -ItemType Directory -Force -Path $pluginDir | Out-Null
 Copy-Item $dll $pluginDir -Force
+Copy-Item $coreDll $pluginDir -Force
 Copy-Item "LICENSE" $pluginDir -Force
 
 if (Test-Path $zipPath) {
