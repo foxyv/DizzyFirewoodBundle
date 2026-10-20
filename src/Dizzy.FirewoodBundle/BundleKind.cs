@@ -53,6 +53,34 @@ namespace Dizzy.FirewoodBundle
             0.97f,
             true);
 
+        // A loose wood pole from DogEggz Tent and Plank. Same-length poles tie like
+        // firewood. Their shop bundle of four stays their own item.
+        internal static readonly BundleKind WoodPole = new BundleKind(
+            "wood pole bundle",
+            "wood poles",
+            "Pole",
+            "Bundle",
+            "Cord",
+            Prepend(NaturalName, DefaultDyeNames),
+            Prepend(NaturalCord, DefaultDyes),
+            TieStyle.Cord,
+            1f,
+            true);
+
+        // Loose round shot from Dangerous Waters. Each calibre stacks only with itself,
+        // in a pyramid, with no cord.
+        internal static readonly BundleKind RoundShot = new BundleKind(
+            "round shot bundle",
+            "round shot",
+            "Round Shot",
+            "Bundle",
+            "",
+            new string[0],
+            new Color[0],
+            TieStyle.None,
+            1f,
+            true);
+
         internal static readonly BundleKind Candle = new BundleKind(
             "candle bundle",
             "candles",
@@ -294,6 +322,10 @@ namespace Dizzy.FirewoodBundle
             {
                 if (this == Firewood)
                     return FirewoodBundleConfig.IsEnabled;
+                if (this == WoodPole)
+                    return FirewoodBundleConfig.PolesAreEnabled && TentPoles.Loaded;
+                if (this == RoundShot)
+                    return FirewoodBundleConfig.ShotAreEnabled && Munitions.Loaded;
                 if (this == Candle)
                     return FirewoodBundleConfig.CandlesAreEnabled;
                 if (this == HangingSausage)
@@ -319,6 +351,10 @@ namespace Dizzy.FirewoodBundle
         {
             get
             {
+                if (this == WoodPole)
+                    return Mathf.Clamp(FirewoodBundleConfig.PoleLimit, 2, FirewoodPieces.MaxCount);
+                if (this == RoundShot)
+                    return Mathf.Clamp(FirewoodBundleConfig.ShotLimit, 2, FirewoodPieces.MaxCount);
                 int limit = this == Firewood
                     ? FirewoodBundleConfig.PieceLimit
                     : this == Candle
@@ -376,6 +412,12 @@ namespace Dizzy.FirewoodBundle
             get { return this == Sausage || this == Cheese; }
         }
 
+        // Round shot from Dangerous Waters.
+        internal bool IsMunition
+        {
+            get { return this == RoundShot; }
+        }
+
         // Loose pieces that only ever gather into their hanging kind: bananas into a
         // bunch, apples into a bag.
         internal bool AlwaysHung
@@ -418,7 +460,7 @@ namespace Dizzy.FirewoodBundle
         // The kinds whose tie or net takes a color.
         internal static BundleKind[] Dyed
         {
-            get { return new[] { Firewood, Candle, AppleBag, OrangeBag, GoatCheeseBag }; }
+            get { return new[] { Firewood, WoodPole, Candle, AppleBag, OrangeBag, GoatCheeseBag }; }
         }
 
         // Swaps in the tie colors from the config.
@@ -431,6 +473,9 @@ namespace Dizzy.FirewoodBundle
             Firewood.ColorNames = Prepend(NaturalName, names);
             Firewood.Colors = Prepend(NaturalCord, colors);
             Firewood.ColorUsed = Prepend(true, used);
+            WoodPole.ColorNames = Prepend(NaturalName, names);
+            WoodPole.Colors = Prepend(NaturalCord, colors);
+            WoodPole.ColorUsed = Prepend(true, used);
             Candle.ColorNames = names;
             Candle.Colors = colors;
             Candle.ColorUsed = used;
@@ -467,7 +512,7 @@ namespace Dizzy.FirewoodBundle
 
         internal static bool AnyEnabled
         {
-            get { return Firewood.IsEnabled || Candle.IsEnabled || Sausage.IsEnabled || HangingSausage.IsEnabled || Banana.IsEnabled || Apple.IsEnabled || Orange.IsEnabled || Date.IsEnabled || Cheese.IsEnabled || GoatCheese.IsEnabled; }
+            get { return Firewood.IsEnabled || WoodPole.IsEnabled || RoundShot.IsEnabled || Candle.IsEnabled || Sausage.IsEnabled || HangingSausage.IsEnabled || Banana.IsEnabled || Apple.IsEnabled || Orange.IsEnabled || Date.IsEnabled || Cheese.IsEnabled || GoatCheese.IsEnabled; }
         }
 
         private static int PrefabIndex(ShipItem ship)
@@ -502,6 +547,11 @@ namespace Dizzy.FirewoodBundle
             // The date's item name is not "date", so it is known by its prefab number.
             if (ship is ShipItemFood && (ship.name == SausageStacks.DateName || PrefabIndex(ship) == SausageStacks.DatePrefab))
                 return SausageStacks.IsHanging(ship) ? HangingDate : Date;
+            if (TentPoles.IsPole(ship))
+                return WoodPole;
+            BundleKind munition = Munitions.KindOf(ship);
+            if (munition != null)
+                return munition;
             return null;
         }
     }

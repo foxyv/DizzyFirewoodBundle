@@ -152,6 +152,8 @@ namespace Dizzy.FirewoodBundle
             BundleKind kind = KindOf(item);
             if (kind != null && kind.IsFood)
                 return SausageStacks.Label(item, count);
+            if (kind != null && kind.IsMunition)
+                return Munitions.Label(item, count);
             return kind != null ? kind.LookText(count) : "";
         }
 
@@ -687,6 +689,8 @@ namespace Dizzy.FirewoodBundle
             {
                 log.sold = true;
                 SausageStacks.CopyFood(bundle, log);
+                if (KindOf(bundle) == BundleKind.WoodPole)
+                    TentPoles.ApplyLength(log, bundle.health);
             }
             return log;
         }
@@ -797,7 +801,7 @@ namespace Dizzy.FirewoodBundle
         internal static bool CanGatherGround(ShipItem piece)
         {
             BundleKind kind = KindOf(piece);
-            if (kind == null || (kind != BundleKind.Firewood && kind != BundleKind.Cheese && !kind.AlwaysHung))
+            if (kind == null || (kind != BundleKind.Firewood && kind != BundleKind.Cheese && kind != BundleKind.WoodPole && !kind.AlwaysHung && !kind.IsMunition))
                 return false;
             if (!kind.IsEnabled || !kind.Hung.IsEnabled || !IsLoose(piece))
                 return false;

@@ -46,6 +46,10 @@ namespace Dizzy.FirewoodBundle
         internal static ConfigEntry<bool> DatesEnabled;
         internal static ConfigEntry<int> MaxDates;
         internal static ConfigEntry<float> DateLayerSpacingAmount;
+        internal static ConfigEntry<bool> PolesEnabled;
+        internal static ConfigEntry<int> MaxPoles;
+        internal static ConfigEntry<bool> ShotEnabled;
+        internal static ConfigEntry<int> MaxShot;
         internal static ConfigEntry<bool> HooksEnabled;
         internal static ConfigEntry<int> MaxHooks;
         internal static ConfigEntry<float> HookMessiness;
@@ -266,6 +270,26 @@ namespace Dizzy.FirewoodBundle
         internal static int DateLimit
         {
             get { return MaxDates != null ? MaxDates.Value : 32; }
+        }
+
+        internal static bool PolesAreEnabled
+        {
+            get { return PolesEnabled == null || PolesEnabled.Value; }
+        }
+
+        internal static int PoleLimit
+        {
+            get { return MaxPoles != null ? MaxPoles.Value : 16; }
+        }
+
+        internal static bool ShotAreEnabled
+        {
+            get { return ShotEnabled == null || ShotEnabled.Value; }
+        }
+
+        internal static int ShotLimit
+        {
+            get { return MaxShot != null ? MaxShot.Value : 204; }
         }
 
         internal static bool HooksAreEnabled
@@ -640,6 +664,34 @@ namespace Dizzy.FirewoodBundle
                 new ConfigDescription(
                     "Multiplier for how far apart the layers of a date rack hang. Higher spaces them further apart.",
                     new AcceptableValueRange<float>(0.3f, 6f)));
+
+            PolesEnabled = config.Bind(
+                "Wood Poles",
+                "Enabled",
+                true,
+                "Hold a wood pole from the Tent and Plank mod and right-click another pole to tie them. Poles in a bundle are cut down to 1 m. Press G on a loose pole to gather loose poles nearby, or in an open crate. Their shop bundle of four stays their own item.");
+
+            MaxPoles = config.Bind(
+                "Wood Poles",
+                "MaxPoles",
+                16,
+                new ConfigDescription(
+                    "Most wood poles in a bundle, up to 999. Each pole in the bundle is 1 m.",
+                    new AcceptableValueRange<int>(2, FirewoodPieces.MaxCount)));
+
+            ShotEnabled = config.Bind(
+                "Dangerous Waters",
+                "Round Shot Enabled",
+                true,
+                "Hold a cannonball from Dangerous Waters and right-click another of the same calibre to stack them in a pyramid. Press G on a loose one to gather matching shot nearby, or in an open crate. Loading a gun takes one from the stack.");
+
+            MaxShot = config.Bind(
+                "Dangerous Waters",
+                "MaxShot",
+                204,
+                new ConfigDescription(
+                    "Most round shot in one pyramid. 204 is a full pyramid, eight balls on a side.",
+                    new AcceptableValueRange<int>(2, FirewoodPieces.MaxCount)));
 
             HooksEnabled = config.Bind(
                 "Hooks",

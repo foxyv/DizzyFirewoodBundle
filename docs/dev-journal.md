@@ -140,3 +140,55 @@ Status is one of:
 - Checked and ruled out: the game's `ExitBoat`, `HangableItem.DisconnectJoint` and Dizzy Clothesline's hang patch. None can loop on a bag that isn't hanging.
 - The main suspect is the bag's convex hull collider, which firewood bundles don't have.
 - J-008's watchdog report from the next freeze should say where it stops.
+
+## J-011: The knot sits on the end of a wood pole bundle
+
+- **Date:** 2026-10-19
+- **Version:** 0.14.3
+- **Status:** Untested
+- **Issue:** [#32](https://github.com/foxyv/DizzyFirewoodBundle/issues/32)
+
+**Problem.** On a tied bundle of Tent and Plank wood poles, the knot sat on the end of the poles instead of on the cord.
+
+**Cause.** `CreateKnot` placed the knot at the average of the piece origins along the long axis. A pole's origin is one end. The cord is wrapped at the middle of the mesh.
+
+**Fix.** The knot uses the center of the mesh bounds on the long axis, which is where the cord sits.
+
+## J-012: A wood pole bundle does not fall
+
+- **Date:** 2026-10-19
+- **Version:** 0.14.3
+- **Status:** Untested
+- **Issue:** [#32](https://github.com/foxyv/DizzyFirewoodBundle/issues/32)
+
+**Problem.** A tied wood pole bundle stayed in the air.
+
+**Cause.** A pole is cloned from the painting prefab, so it starts `attached` and can keep that mesh collider. `ItemRigidbody` stays kinematic while `attached` is set, and while a non-convex mesh collider is present.
+
+**Fix.** `TentPoles.Release` clears `attached`, removes the mesh colliders, turns gravity on, and wakes the body when the bundle is put down.
+
+## J-013: Tent and Plank treats a pole bundle as one pole
+
+- **Date:** 2026-10-19
+- **Version:** 0.14.3
+- **Status:** Untested
+- **Issue:** [#32](https://github.com/foxyv/DizzyFirewoodBundle/issues/32)
+
+**Problem.** Picking up a wood pole bundle made Tent and Plank offer length keys, lean, and the "wood pole" notice.
+
+**Cause.** The bundle is still prefab 643, so `WoodPoles.IsPole` was true. `PoleHeldLook` does not ask `IsPole`, and it drew one pole over the bundle while held.
+
+**Fix.** A prefix makes `IsPole` return false while the count is above one. `PoleHeldLook` is turned off for that same time, and turned back on when one pole is left.
+
+## J-014: Dropping a round shot stack stalls the game
+
+- **Date:** 2026-10-19
+- **Version:** 0.14.3
+- **Status:** Untested
+- **Issue:** [#30](https://github.com/foxyv/DizzyFirewoodBundle/issues/30)
+
+**Problem.** Every time a round shot stack was dropped, the game lagged badly.
+
+**Cause.** Each ball had its own capsule, and a twin on the physics body. A full pyramid is hundreds of colliders waking up together.
+
+**Fix.** The stack has one convex pyramid collider, a little inside the iron.

@@ -1,8 +1,8 @@
 # Packages Dizzy Bundle Up for GitHub Releases.
-# Usage: .\scripts\package-release.ps1 [-Version 0.12.1]
+# Usage: .\scripts\package-release.ps1 [-Version 0.14.3]
 
 param(
-    [string]$Version = "0.12.1"
+    [string]$Version = "0.14.3"
 )
 
 $ErrorActionPreference = "Stop"

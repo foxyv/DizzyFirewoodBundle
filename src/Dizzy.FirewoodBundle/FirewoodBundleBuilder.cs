@@ -101,6 +101,16 @@ namespace Dizzy.FirewoodBundle
                 CopyColliders(prefab.gameObject, item.gameObject);
                 if (item.itemRigidbodyC != null)
                     CopyColliders(prefab.gameObject, item.itemRigidbodyC.gameObject);
+                if (FirewoodPieces.KindOf(item) == BundleKind.WoodPole)
+                {
+                    item.wallAttachment = prefab.wallAttachment;
+                    TentPoles.ApplyLength(item, item.health);
+                    TentPoles.SetBundled(item, false);
+                }
+                else if (FirewoodPieces.KindOf(item) != null && FirewoodPieces.KindOf(item).IsMunition)
+                {
+                    ShowMunitionSource(item, true);
+                }
             }
             else
             {
@@ -207,10 +217,23 @@ namespace Dizzy.FirewoodBundle
                 ApplyHanging(item);
                 return;
             }
+            if (FirewoodPieces.KindOf(item) != null && FirewoodPieces.KindOf(item).IsMunition)
+            {
+                ApplyMunition(item);
+                return;
+            }
 
             int count = FirewoodPieces.CountOf(item);
             if (count <= 1)
                 return;
+
+            // Cut every pole in the bundle down to an armful before the sticks are copied
+            // from the mesh. A longer pole joins by losing the extra length.
+            if (FirewoodPieces.KindOf(item) == BundleKind.WoodPole)
+            {
+                TentPoles.ApplyLength(item, BundleColliderMath.PoleBundleMetres);
+                TentPoles.Release(item);
+            }
 
             float cross;
             int longAxis;
@@ -265,8 +288,16 @@ namespace Dizzy.FirewoodBundle
 
             item.lookText = FirewoodPieces.LookText(item, count);
             ShipItem prefab = FirewoodPieces.PrefabOf(item);
-            if (prefab != null)
+            if (kind == BundleKind.WoodPole)
+            {
+                item.description = BundleColliderMath.PoleLengthText(item.health);
+                item.wallAttachment = false;
+                TentPoles.SetBundled(item, true);
+            }
+            else if (prefab != null)
+            {
                 item.description = prefab.description;
+            }
             bool wasTwoHanded = item.big;
             item.big = true;
             if (!wasTwoHanded)
@@ -1497,6 +1528,283 @@ namespace Dizzy.FirewoodBundle
                 field.SetValue(pointer, value);
         }
 
+        // Round shot keeps its mesh on a child, so each ball is a copy of that child.
+        // The copies sit in a square pyramid. One pyramid collider covers the stack,
+        // a little inside the iron. A capsule per ball stalls the game when it drops.
+        // There is no cord.
+        private static void ApplyMunition(ShipItem item)
+        {
+            int count = FirewoodPieces.CountOf(item);
+            if (count <= 1)
+                return;
+
+            var sources = new List<Transform>();
+            for (int i = 0; i < item.transform.childCount; i++)
+            {
+                Transform child = item.transform.GetChild(i);
+                if (IsBundlePart(child))
+                    continue;
+                if (child.GetComponentInChildren<Renderer>(true) == null)
+                    continue;
+                sources.Add(child);
+            }
+
+            Vector3 pieceCenter;
+            Vector3 pieceSize;
+            if (!MeasureMunition(item, sources, out pieceCenter, out pieceSize))
+            {
+                pieceCenter = Vector3.zero;
+                pieceSize = new Vector3(0.14f, 0.14f, 0.14f);
+            }
+
+            float diameter = Mathf.Max(pieceSize.x, Mathf.Max(pieceSize.y, pieceSize.z));
+            if (diameter < 0.05f)
+                diameter = 0.05f;
+            ShotPlace[] places = ShotPyramid.Layout(count, diameter);
+            var centers = new List<Vector3>(places.Length);
+            for (int i = 0; i < places.Length; i++)
+                centers.Add(new Vector3(places[i].X, places[i].Y, places[i].Z));
+            ClearSticks(item);
+
+            var renderers = new List<Renderer>();
+            for (int i = 0; i < centers.Count; i++)
+            {
+                for (int s = 0; s < sources.Count; s++)
+                {
+                    Transform source = sources[s];
+                    GameObject copy = Object.Instantiate(source.gameObject, item.transform, false);
+                    copy.name = StickName;
+                    copy.transform.localPosition = centers[i] + source.localPosition;
+                    copy.transform.localRotation = source.localRotation;
+                    copy.transform.localScale = source.localScale;
+                    SetLayer(copy.transform, item.gameObject.layer);
+                    StripPhysics(copy);
+                    PaintOutline(copy, item);
+                    Renderer[] drawn = copy.GetComponentsInChildren<Renderer>(true);
+                    for (int r = 0; r < drawn.Length; r++)
+                    {
+                        if (drawn[r] != null)
+                        {
+                            drawn[r].enabled = true;
+                            renderers.Add(drawn[r]);
+                        }
+                    }
+                }
+            }
+
+            if (sources.Count > 0)
+                ShowMunitionSource(item, false);
+
+            IncludeInLod(item, renderers);
+
+            item.lookText = FirewoodPieces.LookText(item, count);
+            ShipItem prefab = FirewoodPieces.PrefabOf(item);
+            if (prefab != null)
+                item.description = prefab.description;
+            bool wasTwoHanded = item.big;
+            item.big = true;
+            if (!wasTwoHanded)
+                AdoptTwoHandedHold(item);
+            ApplyMass(item, count);
+            ApplyHoldDistance(item, centers, 1, diameter);
+
+            ClearHull(item);
+            SetOwnColliders(item.gameObject, false);
+            if (item.itemRigidbodyC != null)
+                SetOwnColliders(item.itemRigidbodyC.gameObject, false);
+            var balls = new ShotPlace[centers.Count];
+            for (int i = 0; i < centers.Count; i++)
+                balls[i] = new ShotPlace(centers[i].x, centers[i].y, centers[i].z);
+            ShotPlace[] corners = ShotPyramid.Collider(balls, diameter * 0.5f);
+            if (corners.Length >= 5)
+            {
+                var vertices = new List<Vector3>(corners.Length);
+                for (int i = 0; i < corners.Length; i++)
+                    vertices.Add(pieceCenter + new Vector3(corners[i].X, corners[i].Y, corners[i].Z));
+                Mesh hull = KeepHull(item, vertices, PyramidTriangles());
+                if (hull != null)
+                    AddHull(item, hull);
+            }
+
+            QuietHull(item);
+        }
+
+        // Base, then four sides up to the apex. Convex collision uses the corners.
+        private static List<int> PyramidTriangles()
+        {
+            return new List<int>
+            {
+                0, 2, 1,
+                0, 3, 2,
+                0, 1, 4,
+                1, 2, 4,
+                2, 3, 4,
+                3, 0, 4
+            };
+        }
+
+        private static bool MeasureMunition(ShipItem item, List<Transform> sources, out Vector3 center, out Vector3 size)
+        {
+            center = Vector3.zero;
+            size = Vector3.zero;
+            bool any = false;
+            Bounds local = new Bounds(Vector3.zero, Vector3.zero);
+            for (int s = 0; s < sources.Count; s++)
+            {
+                MeshFilter[] filters = sources[s].GetComponentsInChildren<MeshFilter>(true);
+                for (int f = 0; f < filters.Length; f++)
+                {
+                    MeshFilter filter = filters[f];
+                    if (filter == null || filter.sharedMesh == null)
+                        continue;
+                    Bounds mesh = filter.sharedMesh.bounds;
+                    for (int corner = 0; corner < 8; corner++)
+                    {
+                        Vector3 point = new Vector3(
+                            (corner & 1) == 0 ? mesh.min.x : mesh.max.x,
+                            (corner & 2) == 0 ? mesh.min.y : mesh.max.y,
+                            (corner & 4) == 0 ? mesh.min.z : mesh.max.z);
+                        Vector3 at = item.transform.InverseTransformPoint(filter.transform.TransformPoint(point));
+                        if (!any)
+                        {
+                            local = new Bounds(at, Vector3.zero);
+                            any = true;
+                        }
+                        else
+                        {
+                            local.Encapsulate(at);
+                        }
+                    }
+                }
+            }
+
+            if (!any)
+                return false;
+            center = local.center;
+            size = local.size;
+            return true;
+        }
+
+        private static void ShowMunitionSource(ShipItem item, bool shown)
+        {
+            if (item == null)
+                return;
+            Renderer[] renderers = item.GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                Renderer renderer = renderers[i];
+                if (renderer == null || IsBundlePart(renderer.transform, item.transform))
+                    continue;
+                renderer.enabled = shown;
+            }
+
+            Collider[] colliders = item.GetComponentsInChildren<Collider>(true);
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                Collider collider = colliders[i];
+                if (collider == null || collider.transform == item.transform)
+                    continue;
+                if (item.itemRigidbodyC != null && collider.transform == item.itemRigidbodyC.transform)
+                    continue;
+                if (IsBundlePart(collider.transform, item.transform))
+                    continue;
+                collider.enabled = shown;
+            }
+
+            if (shown)
+            {
+                SetOwnColliders(item.gameObject, true);
+                if (item.itemRigidbodyC != null)
+                    SetOwnColliders(item.itemRigidbodyC.gameObject, true);
+                var shownRenderers = new List<Renderer>();
+                for (int i = 0; i < renderers.Length; i++)
+                {
+                    Renderer renderer = renderers[i];
+                    if (renderer != null && renderer.enabled)
+                        shownRenderers.Add(renderer);
+                }
+                IncludeInLod(item, shownRenderers);
+            }
+        }
+
+        private static void SetOwnColliders(GameObject go, bool enabled)
+        {
+            if (go == null)
+                return;
+            Collider[] colliders = go.GetComponents<Collider>();
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                if (colliders[i] != null)
+                    colliders[i].enabled = enabled;
+            }
+        }
+
+        private static bool IsBundlePart(Transform child)
+        {
+            return child != null && IsBundlePart(child, child.parent);
+        }
+
+        private static bool IsBundlePart(Transform child, Transform root)
+        {
+            Transform cursor = child;
+            while (cursor != null && cursor != root)
+            {
+                string name = cursor.name;
+                if (name == StickName || name == StringName || name == KnotName || name == HullName || name == PieceName)
+                    return true;
+                cursor = cursor.parent;
+            }
+
+            return false;
+        }
+
+        private static void SetLayer(Transform transform, int layer)
+        {
+            if (transform == null)
+                return;
+            transform.gameObject.layer = layer;
+            for (int i = 0; i < transform.childCount; i++)
+                SetLayer(transform.GetChild(i), layer);
+        }
+
+        private static void StripPhysics(GameObject copy)
+        {
+            Collider[] colliders = copy.GetComponentsInChildren<Collider>(true);
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                if (colliders[i] != null)
+                    Object.DestroyImmediate(colliders[i]);
+            }
+
+            Rigidbody[] bodies = copy.GetComponentsInChildren<Rigidbody>(true);
+            for (int i = 0; i < bodies.Length; i++)
+            {
+                if (bodies[i] != null)
+                    Object.DestroyImmediate(bodies[i]);
+            }
+        }
+
+        private static void PaintOutline(GameObject copy, ShipItem item)
+        {
+            Outline root = item.GetComponent<Outline>();
+            Renderer[] renderers = copy.GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                Renderer renderer = renderers[i];
+                if (renderer == null)
+                    continue;
+                Outline outline = renderer.GetComponent<Outline>();
+                if (outline == null)
+                    outline = renderer.gameObject.AddComponent<Outline>();
+                outline.enabled = false;
+                if (root == null)
+                    continue;
+                outline.color = root.color;
+                outline.eraseRenderer = root.eraseRenderer;
+                outline.originalLayer = root.originalLayer;
+            }
+        }
+
         private static void ClearSticks(ShipItem item)
         {
             for (int i = item.transform.childCount - 1; i >= 0; i--)
@@ -1587,14 +1895,17 @@ namespace Dizzy.FirewoodBundle
                 if (child.name != StickName && child.name != StringName && child.name != KnotName)
                     continue;
 
-                Outline outline = child.GetComponent<Outline>();
-                if (outline == null)
-                    continue;
-
-                outline.color = root.color;
-                outline.eraseRenderer = root.eraseRenderer;
-                if (outline.enabled != root.enabled)
-                    outline.enabled = root.enabled;
+                Outline[] outlines = child.GetComponentsInChildren<Outline>(true);
+                for (int o = 0; o < outlines.Length; o++)
+                {
+                    Outline outline = outlines[o];
+                    if (outline == null)
+                        continue;
+                    outline.color = root.color;
+                    outline.eraseRenderer = root.eraseRenderer;
+                    if (outline.enabled != root.enabled)
+                        outline.enabled = root.enabled;
+                }
             }
 
             // The item's own mesh is hidden behind the copies. Its outline would still draw
@@ -1715,16 +2026,12 @@ namespace Dizzy.FirewoodBundle
 
             float minA = float.MaxValue;
             float maxA = float.MinValue;
-            float minLong = float.MaxValue;
-            float maxLong = float.MinValue;
             for (int i = 0; i < centers.Count; i++)
             {
                 if (centers[i][upAxis] < topRow - 0.0001f)
                     continue;
                 minA = Mathf.Min(minA, centers[i][axisA]);
                 maxA = Mathf.Max(maxA, centers[i][axisA]);
-                minLong = Mathf.Min(minLong, centers[i][longAxis]);
-                maxLong = Mathf.Max(maxLong, centers[i][longAxis]);
             }
 
             float cord = Mathf.Clamp(cross * 0.07f, 0.004f, 0.009f);
@@ -1734,9 +2041,12 @@ namespace Dizzy.FirewoodBundle
             up[upAxis] = 1f;
             Vector3 along = Vector3.zero;
             along[longAxis] = 1f;
+            // Piece positions are the mesh origin. A log's origin is its middle, so that
+            // is where the cord sits. A pole's origin is one end, and the cord sits at
+            // the middle of the mesh. The knot belongs on the cord.
             Vector3 origin = Vector3.zero;
             origin[axisA] = (minA + maxA) * 0.5f;
-            origin[longAxis] = (minLong + maxLong) * 0.5f;
+            origin[longAxis] = BundleBounds(centers, logMesh).center[longAxis];
             origin[upAxis] = topRow + logMesh.bounds.max[upAxis] - (stackUp >= 0 ? StackTopDrop(logMesh, upAxis) : 0f);
             var left = new List<Vector3> { origin, origin - along * spread + up * rise };
             var right = new List<Vector3> { origin, origin + along * spread + up * rise };
@@ -2417,7 +2727,9 @@ namespace Dizzy.FirewoodBundle
         private static void ApplyMass(ShipItem item, int count)
         {
             ShipItem prefab = FirewoodPieces.PrefabOf(item);
-            float baseMass = prefab != null ? prefab.mass : item.mass;
+            float baseMass = FirewoodPieces.KindOf(item) == BundleKind.WoodPole
+                ? BundleColliderMath.PoleMass(item.health)
+                : prefab != null ? prefab.mass : item.mass;
             if (baseMass <= 0f)
                 baseMass = 1f;
             item.mass = baseMass * count;

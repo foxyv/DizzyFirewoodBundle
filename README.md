@@ -2,7 +2,7 @@
 
 *Formerly Dizzy Firewood Bundle.* The plugin folder, DLL and config file keep their old `Dizzy.FirewoodBundle` / `com.dizzy.sailwind.firewoodbundle` names, so updating is a drop-in replacement.
 
-A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepInEx 5](https://thunderstore.io/c/sailwind/p/BepInEx/BepInExPack/) that bundles loose firewood, candles, sausages, bananas, apples, oranges, dates, cheese and fishing hooks together.
+A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepInEx 5](https://thunderstore.io/c/sailwind/p/BepInEx/BepInExPack/) that bundles loose firewood, candles, sausages, bananas, apples, oranges, dates, cheese, fishing hooks, and, with Dangerous Waters, cannonballs together.
 
 ## Features
 
@@ -19,8 +19,8 @@ A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepI
 - Right-click a bundle to take one candle off. Press **G** on a loose candle in an open crate to pick up a bundle.
 
 ### Tie colors
-- Hold or look at a firewood or candle bundle, or a bag, and press **\\** to change its tie color.
-- Candles: red, blue, green, gold, white, black, purple, pink, orange, tan and brown. Firewood: its natural cord, then the same eleven. Apple, orange and goat cheese bags: the same eleven, starting from black.
+- Hold or look at a firewood, wood pole or candle bundle, or a bag, and press **\\** to change its tie color.
+- Candles: red, blue, green, gold, white, black, purple, pink, orange, tan and brown. Firewood and wood poles: their natural cord, then the same eleven. Apple, orange and goat cheese bags: the same eleven, starting from black.
 - Each color has a name and a value in the config's `Tie Colors` section. Rename or recolor any of them.
 - Colors 12 to 16 are spare. Give one a name and a value to add a color of your own.
 - Leave a color's name empty to take it out of the ones the key steps through. A bundle already tied in it keeps it.
@@ -81,6 +81,17 @@ A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepI
 - Goat cheese is already a small round, so it goes in a net bag like the fruit: right-click two dried or smoked rounds together, or click an empty lamp hook with one.
 - The rounds lie flat in layers inside the net. A crate's 12 fill one bag.
 - Add, take out, hang, recolor and press **G** on goat cheese the same way as apples and oranges.
+
+### Wood poles
+- With the Tent and Plank mod, hold a wood pole and right-click another to tie them. Poles in a bundle are cut down to 1 m.
+- While it is tied, Tent and Plank leaves it alone: no length keys, lean or nail. Taking the last one off leaves a normal pole that can be nailed and leaned.
+- Their shop bundle of four 2 m poles is unchanged. Alt-click still unpacks that one.
+- Press **G** on a loose pole to gather loose poles nearby, or the loose ones in an open crate. They are cut down to 1 m.
+
+### Cannonballs
+- With Dangerous Waters, hold a cannonball and right-click another of the same calibre to stack them in a pyramid. 4 lb, 12 lb and 18 lb shot each keep to themselves. There is no cord.
+- Loading a gun takes one cannonball. The rest of the stack stays in your hands.
+- Press **G** on a loose cannonball to gather matching shot nearby, or the matching ones in an open crate.
 
 ### Fishing hooks
 - Hold a fishing hook and right-click another hook to string them on a line.
@@ -145,6 +156,10 @@ Settings are in `BepInEx\config\com.dizzy.sailwind.firewoodbundle.cfg`. The file
 | Dates | Enabled | true | Turns date racks on or off. |
 | Dates | MaxDates | 32 | Most date skewers on one rack, up to 999. |
 | Dates | Layer Spacing | 2 | How far apart a rack's layers hang. |
+| Wood Poles | Enabled | true | Turns wood pole bundles on or off. Needs the Tent and Plank mod. |
+| Wood Poles | MaxPoles | 16 | Most poles in a bundle, up to 999. Each one is cut to 1 m. |
+| Dangerous Waters | Round Shot Enabled | true | Turns round shot pyramids on or off. Needs Dangerous Waters. |
+| Dangerous Waters | MaxShot | 204 | Most round shot in one pyramid. 204 is a full pyramid, eight balls on a side. |
 | Hooks | Enabled | true | Turns hook lines on or off. |
 | Hooks | MaxHooks | 20 | Most hooks on one line. |
 | Hooks | Hook Messiness | 1 | How far each hook is shifted and tilted off a neat line. |
@@ -181,7 +196,7 @@ dotnet test DizzyFirewoodBundle.sln -c Release
 To package a release zip into `dist\`, run:
 
 ```powershell
-.\scripts\package-release.ps1 -Version 0.12.1
+.\scripts\package-release.ps1 -Version 0.13.0
 ```
 
 ## License

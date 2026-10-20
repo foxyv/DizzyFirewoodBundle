@@ -232,6 +232,8 @@ namespace Dizzy.FirewoodBundle
         // Why these two cannot stack, or null when they can.
         internal static string Rejection(ShipItem held, ShipItem target)
         {
+            if (Munitions.Handles(held))
+                return Munitions.Rejection(held, target);
             if (IsGoatCheese(held) && IsGoatCheese(target))
             {
                 if (!IsPreserved(held) || !IsPreserved(target))
