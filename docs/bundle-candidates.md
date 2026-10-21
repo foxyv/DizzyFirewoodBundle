@@ -58,9 +58,9 @@ Furniture, beds, sails, stoves, racks, paintings, clocks and compasses are place
 
 ## Meat
 
-- [ ] 39 pork
+- [x] 39 pork: meat bags, chops lying flat in a cord mesh
 - [x] 41 sausage: stacks, plus hanging bunches on a lamp hook
-- [ ] 54 lamb chop
+- [x] 54 lamb chop: meat bags, the same as pork, and the two do not mix
 - [ ] 154 chicken
 
 ## Fruit and vegetables

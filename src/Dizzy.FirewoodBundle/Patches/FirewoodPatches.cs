@@ -60,7 +60,7 @@ namespace Dizzy.FirewoodBundle
                         AimAtNailedBundle(__instance, ___debugEditorPointer, ___raycastRay, ref ___pointedAtButton, ref ___currentLookDistance);
                     if (FirewoodBundleConfig.HooksAreEnabled)
                         AimAtHangingLine(__instance, ___debugEditorPointer, ___raycastRay, ref ___pointedAtButton, ref ___currentLookDistance);
-                    if (BundleKind.AppleBag.IsEnabled || BundleKind.OrangeBag.IsEnabled || BundleKind.GoatCheeseBag.IsEnabled)
+                    if (BundleKind.AppleBag.IsEnabled || BundleKind.OrangeBag.IsEnabled || BundleKind.GoatCheeseBag.IsEnabled || BundleKind.Pork.IsEnabled)
                         AimAtHangingBag(__instance, ___debugEditorPointer, ___raycastRay, ref ___pointedAtButton, ref ___currentLookDistance);
                 }
                 return;
@@ -378,7 +378,8 @@ namespace Dizzy.FirewoodBundle
                 {
                     BundleKind kind = FirewoodPieces.KindOf(ship);
                     HangableItem hang = ship.GetComponent<HangableItem>();
-                    if (kind != null && kind.IsBag && hang != null && hang.IsHanging())
+                    bool hangingMeat = MeatStacks.IsMeat(ship) && hang != null && hang.IsHanging();
+                    if (kind != null && (kind.IsBag || hangingMeat) && hang != null && hang.IsHanging())
                     {
                         kinds.Add(BagLookHit.HangingBag);
                         targets.Add(ship);

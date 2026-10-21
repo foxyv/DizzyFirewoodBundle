@@ -201,7 +201,9 @@ namespace Dizzy.FirewoodBundle
             if (body != null)
             {
                 // Hanging marks the body as held in place, the same flag a stove uses.
-                if (body.inStove && !targetKind.Hangs)
+                // A meat bag hangs without being a hanging kind, and it still takes more chops.
+                bool hangingMeat = MeatStacks.IsMeat(target) && HookLinePieces.IsHanging(target);
+                if (body.inStove && !targetKind.Hangs && !hangingMeat)
                     return false;
                 if (body.GetCurrentInventorySlot() != null)
                     return false;
@@ -278,6 +280,10 @@ namespace Dizzy.FirewoodBundle
                     continue;
                 }
 
+                // The hook's box sits in front of a bag hanging on it.
+                if (ship is ShipItemLampHook)
+                    continue;
+
                 if (hitDistance < blockedAt)
                     blockedAt = hitDistance;
             }
@@ -340,8 +346,8 @@ namespace Dizzy.FirewoodBundle
                 return false;
             }
 
-            // A hanging bundle stays on its hook, even with one sausage, and takes the held ones.
-            if (CountOf(target) > 1 || target.nailed || KindOf(target).Hangs)
+            // A hanging bundle stays on its hook, even with one piece left, and takes the held ones.
+            if (CountOf(target) > 1 || target.nailed || KindOf(target).Hangs || HookLinePieces.IsHanging(target))
                 return AddHeldToPile(held, target, pointer, count);
 
             int previousCount = CountOf(held);
@@ -440,7 +446,7 @@ namespace Dizzy.FirewoodBundle
             int pileCount = CountOf(pile);
             if (kind == null)
                 return 0;
-            bool keeps = pileCount > 1 || pile.nailed || kind.Hangs;
+            bool keeps = pileCount > 1 || pile.nailed || kind.Hangs || HookLinePieces.IsHanging(pile);
             if (heldCount < 1 || !keeps)
                 return 0;
             if (heldCount <= 1 && !kind.Hangs)
@@ -544,6 +550,8 @@ namespace Dizzy.FirewoodBundle
         {
             BundleKind bundleKind = KindOf(bundle);
             if (bundleKind != null && bundleKind.Hangs)
+                return TakeHanging(bundle);
+            if (MeatStacks.IsMeat(bundle) && HookLinePieces.IsHanging(bundle))
                 return TakeHanging(bundle);
             if (!IsActive(bundle) || CountOf(bundle) <= 1)
                 return false;
@@ -801,7 +809,7 @@ namespace Dizzy.FirewoodBundle
         internal static bool CanGatherGround(ShipItem piece)
         {
             BundleKind kind = KindOf(piece);
-            if (kind == null || (kind != BundleKind.Firewood && kind != BundleKind.Cheese && kind != BundleKind.WoodPole && !kind.AlwaysHung && !kind.IsMunition))
+            if (kind == null || (kind != BundleKind.Firewood && kind != BundleKind.Cheese && kind != BundleKind.WoodPole && kind != BundleKind.Pork && kind != BundleKind.Lamb && !kind.AlwaysHung && !kind.IsMunition))
                 return false;
             if (!kind.IsEnabled || !kind.Hung.IsEnabled || !IsLoose(piece))
                 return false;

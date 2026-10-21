@@ -152,6 +152,7 @@ namespace Dizzy.FirewoodBundle
             if (count <= 1)
                 return;
             WriteCount(item, count);
+            WriteColor(item, color);
             item.GetComponent<StackState>().Width = Mathf.Clamp(width, 0, PileWidth);
         }
 
@@ -234,6 +235,8 @@ namespace Dizzy.FirewoodBundle
         {
             if (Munitions.Handles(held))
                 return Munitions.Rejection(held, target);
+            if (MeatStacks.IsMeat(held) || MeatStacks.IsMeat(target))
+                return MeatStacks.Rejection(held, target);
             if (IsGoatCheese(held) && IsGoatCheese(target))
             {
                 if (!IsPreserved(held) || !IsPreserved(target))
@@ -337,6 +340,9 @@ namespace Dizzy.FirewoodBundle
                 return !IsPreserved(item) ? FreshCheese : !IsWhole(item) ? EatenCheese : null;
             if (IsGoatCheese(item))
                 return !IsPreserved(item) ? FreshGoatCheese : !IsWhole(item) ? EatenGoatCheese : null;
+            string meat = MeatStacks.HangRefusal(item);
+            if (meat != null || MeatStacks.IsMeat(item))
+                return meat;
             if (!IsPreserved(item))
                 return date ? FreshDate : orange ? FreshOrange : apple ? FreshApple : banana ? FreshBanana : Unpreserved;
             if (!IsWhole(item))

@@ -40,6 +40,10 @@ namespace Dizzy.FirewoodBundle
         internal static ConfigEntry<bool> GoatCheeseEnabled;
         internal static ConfigEntry<int> MaxGoatCheese;
         internal static ConfigEntry<int> GoatCheeseLayerSizeAmount;
+        internal static ConfigEntry<bool> MeatEnabled;
+        internal static ConfigEntry<int> MaxMeat;
+        internal static ConfigEntry<float> MeatNetThicknessAmount;
+        internal static ConfigEntry<float> MeatNetGapAmount;
         internal static ConfigEntry<bool> OrangesEnabled;
         internal static ConfigEntry<int> MaxOranges;
         internal static ConfigEntry<int> OrangeLayerSizeAmount;
@@ -240,6 +244,27 @@ namespace Dizzy.FirewoodBundle
         internal static int GoatCheeseLayerSize
         {
             get { return GoatCheeseLayerSizeAmount != null ? Mathf.Max(2, GoatCheeseLayerSizeAmount.Value) : 5; }
+        }
+
+        internal static bool MeatIsEnabled
+        {
+            get { return MeatEnabled == null || MeatEnabled.Value; }
+        }
+
+        internal static int MeatLimit
+        {
+            get { return MaxMeat != null ? MaxMeat.Value : 8; }
+        }
+
+        internal static float MeatNetThickness
+        {
+            get { return MeatNetThicknessAmount != null ? MeatNetThicknessAmount.Value : 1.5f; }
+        }
+
+        // Centimetres in the config, metres here.
+        internal static float MeatNetGap
+        {
+            get { return (MeatNetGapAmount != null ? MeatNetGapAmount.Value : 0.4f) * 0.01f; }
         }
 
         internal static bool OrangesAreEnabled
@@ -634,6 +659,36 @@ namespace Dizzy.FirewoodBundle
                 new ConfigDescription(
                     "Most oranges in one bag, up to 999.",
                     new AcceptableValueRange<int>(1, FirewoodPieces.MaxCount)));
+
+            MeatEnabled = config.Bind(
+                "Meat",
+                "Enabled",
+                true,
+                "Hold a dried or smoked pork or lamb chop and right-click another of the same meat and the same kind to put them in a bag. Take one off to eat, cook, salt or slice it. Click an empty lamp hook with the bag to hang it. Press \\ while holding or looking at the bag to change the net's color.");
+
+            MaxMeat = config.Bind(
+                "Meat",
+                "MaxMeat",
+                8,
+                new ConfigDescription(
+                    "Most chops in one bag, up to 999. Pork and lamb do not share a bag.",
+                    new AcceptableValueRange<int>(2, FirewoodPieces.MaxCount)));
+
+            MeatNetThicknessAmount = config.Bind(
+                "Meat",
+                "Net Thickness",
+                1.5f,
+                new ConfigDescription(
+                    "How thick the strings of a pork or lamb bag are. 1 is a thin net, 4 a heavy one. The bag picks up the new thickness when it changes.",
+                    new AcceptableValueRange<float>(0.3f, 4f)));
+
+            MeatNetGapAmount = config.Bind(
+                "Meat",
+                "Net Gap",
+                0.4f,
+                new ConfigDescription(
+                    "How far the net stands off the meat, in centimetres. 0.4 sits just outside. Smaller is tighter, and below zero the net tucks into the meat. The bag picks up the change when it changes.",
+                    new AcceptableValueRange<float>(-2f, 4f)));
 
             OrangeLayerSizeAmount = config.Bind(
                 "Orange Bags",

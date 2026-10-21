@@ -2,7 +2,7 @@
 
 *Formerly Dizzy Firewood Bundle.* The plugin folder, DLL and config file keep their old `Dizzy.FirewoodBundle` / `com.dizzy.sailwind.firewoodbundle` names, so updating is a drop-in replacement.
 
-A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepInEx 5](https://thunderstore.io/c/sailwind/p/BepInEx/BepInExPack/) that bundles loose firewood, candles, sausages, bananas, apples, oranges, dates, cheese, fishing hooks, and, with Dangerous Waters, cannonballs together.
+A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepInEx 5](https://thunderstore.io/c/sailwind/p/BepInEx/BepInExPack/) that bundles loose firewood, candles, sausages, bananas, apples, oranges, dates, cheese, pork, lamb, fishing hooks, and, with Dangerous Waters, cannonballs together.
 
 ## Features
 
@@ -19,8 +19,8 @@ A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepI
 - Right-click a bundle to take one candle off. Press **G** on a loose candle in an open crate to pick up a bundle.
 
 ### Tie colors
-- Hold or look at a firewood, wood pole or candle bundle, or a bag, and press **\\** to change its tie color.
-- Candles: red, blue, green, gold, white, black, purple, pink, orange, tan and brown. Firewood and wood poles: their natural cord, then the same eleven. Apple, orange and goat cheese bags: the same eleven, starting from black.
+- Hold or look at a firewood, wood pole or candle bundle, or an apple, orange, goat cheese, pork or lamb bag, and press **\\** to change its tie color.
+- Candles: red, blue, green, gold, white, black, purple, pink, orange, tan and brown. Firewood and wood poles: their natural cord, then the same eleven. Apple, orange, goat cheese, pork and lamb bags: the same eleven, starting from black.
 - Each color has a name and a value in the config's `Tie Colors` section. Rename or recolor any of them.
 - Colors 12 to 16 are spare. Give one a name and a value to add a color of your own.
 - Leave a color's name empty to take it out of the ones the key steps through. A bundle already tied in it keeps it.
@@ -76,6 +76,13 @@ A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepI
 - More wedges start another wheel on top. Right-click the wheel to add a wedge, or with empty hands to take one off.
 - Press **G** on a wedge in an open crate, or on a loose one lying around, to pick up a wheel.
 - To eat, cook, salt or slice cheese, take a wedge off first.
+
+### Meat bags
+- Hold a dried or smoked pork chop and right-click another of the same kind to put them in a meat bag. Lamb works the same way, and the two meats do not mix. Smoked chops do not bag with salted ones.
+- The chops stack flat, all the same way, in a long tube. A cord net like an apple bag sits just outside the meat. Press **\\** while holding or looking at the bag to change the net's color.
+- Click an empty lamp hook with the bag to hang it. The tube hangs down from the hook. Right-click the hanging bag with empty hands to take one chop off, or hold a matching chop and right-click it to put that chop back. The last one comes off the hook.
+- Right-click the bag to take one chop off. To eat, cook, salt or slice one, take it off first.
+- Press **G** on a loose chop in an open crate, or on one lying nearby, to pick up a bag.
 
 ### Goat cheese bags
 - Goat cheese is already a small round, so it goes in a net bag like the fruit: right-click two dried or smoked rounds together, or click an empty lamp hook with one.
@@ -153,6 +160,10 @@ Settings are in `BepInEx\config\com.dizzy.sailwind.firewoodbundle.cfg`. The file
 | Goat Cheese | Enabled | true | Turns goat cheese bags on or off. |
 | Goat Cheese | MaxGoatCheese | 12 | Most rounds in a bag, up to 999. |
 | Goat Cheese | Layer Size | 5 | Rounds in the bottom layer. Each layer above holds one fewer. |
+| Meat | Enabled | true | Turns pork and lamb bags on or off. |
+| Meat | MaxMeat | 8 | Most chops in one bag, up to 999. Pork and lamb do not share a bag. |
+| Meat | Net Thickness | 1.5 | How thick the strings of a pork or lamb bag are. |
+| Meat | Net Gap | 0.4 | How far the net stands off the meat, in centimetres. Smaller is tighter. Below zero tucks the net into the meat. |
 | Dates | Enabled | true | Turns date racks on or off. |
 | Dates | MaxDates | 32 | Most date skewers on one rack, up to 999. |
 | Dates | Layer Spacing | 2 | How far apart a rack's layers hang. |

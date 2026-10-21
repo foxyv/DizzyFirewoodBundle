@@ -133,12 +133,17 @@ namespace Dizzy.FirewoodBundle
             if (__result || lookedAtButton == null)
                 return;
             BundleKind kind = FirewoodPieces.KindOf(__instance);
-            if (kind == null || !kind.Hung.Hangs || !kind.Hung.IsEnabled)
+            if (kind == null)
+                return;
+            bool meatBag = MeatStacks.IsMeat(__instance) && FirewoodPieces.CountOf(__instance) > 1;
+            if (meatBag && !kind.IsEnabled)
+                return;
+            if (!meatBag && (!kind.Hung.Hangs || !kind.Hung.IsEnabled))
                 return;
             ShipItemLampHook lamp = lookedAtButton.GetComponent<ShipItemLampHook>();
             if (lamp == null || HookLinePieces.LampIsOccupied(lamp))
                 return;
-            if (kind.Hangs || FirewoodPieces.CountOf(__instance) <= 1)
+            if (meatBag || kind.Hangs || FirewoodPieces.CountOf(__instance) <= 1)
                 __result = true;
         }
     }

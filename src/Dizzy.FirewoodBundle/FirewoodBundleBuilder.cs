@@ -54,6 +54,13 @@ namespace Dizzy.FirewoodBundle
         // about a third out of balance, so it tips about 8 degrees.
         private const float RackTip = 25f;
         private const float AppleNeck = 0.012f;
+        // How far the top of a meat bag sits below the hook.
+        private const float MeatNeck = 0.05f;
+
+        private static float MeatCord
+        {
+            get { return AppleNetBase * FirewoodBundleConfig.MeatNetThickness; }
+        }
         // Colors of the mod's own parts: the string on hanging sausages, and the iron of
         // a date rack.
         private static readonly Color SausageString = new Color(0.82f, 0.7f, 0.52f);
@@ -110,6 +117,16 @@ namespace Dizzy.FirewoodBundle
                 else if (FirewoodPieces.KindOf(item) != null && FirewoodPieces.KindOf(item).IsMunition)
                 {
                     ShowMunitionSource(item, true);
+                }
+                else if (MeatStacks.IsMeat(item))
+                {
+                    HangableItem hang = item.GetComponent<HangableItem>();
+                    if (hang != null)
+                    {
+                        if (hang.IsHanging())
+                            hang.DisconnectJoint();
+                        Object.Destroy(hang);
+                    }
                 }
             }
             else
@@ -226,6 +243,13 @@ namespace Dizzy.FirewoodBundle
             int count = FirewoodPieces.CountOf(item);
             if (count <= 1)
                 return;
+
+            BundleKind meatKind = FirewoodPieces.KindOf(item);
+            if (meatKind == BundleKind.Pork || meatKind == BundleKind.Lamb)
+            {
+                ApplyMeatBag(item, count);
+                return;
+            }
 
             // Cut every pole in the bundle down to an armful before the sticks are copied
             // from the mesh. A longer pole joins by losing the extra length.
@@ -1816,6 +1840,171 @@ namespace Dizzy.FirewoodBundle
                     ReleaseStringMesh(child);
                 Object.Destroy(child.gameObject);
             }
+        }
+
+        // Chops lie flat, all the same way, in a tube. The net is the apple-bag weave,
+        // pulled in so it meets the chop's outline.
+        private static void ApplyMeatBag(ShipItem item, int count)
+        {
+            MeshFilter filter = item.GetComponent<MeshFilter>();
+            Mesh mesh = filter != null ? filter.sharedMesh : null;
+            MeshRenderer source = item.GetComponent<MeshRenderer>();
+            if (mesh == null || source == null)
+                return;
+
+            ClearSticks(item);
+            ClearHull(item);
+            source.enabled = false;
+
+            float thickness = mesh.bounds.size.y;
+            Quaternion turn = Quaternion.identity;
+            var centers = new List<Vector3>(count);
+            var turns = new List<Quaternion>(count);
+            var renderers = new List<Renderer>(count + 32);
+            Material[] materials = source.sharedMaterials;
+            // The top of the tube sits just under the origin, so the bag hangs down from a hook.
+            float pitch;
+            MeatBagLayout.Slot(1, thickness, out pitch);
+            float meshHigh = mesh.bounds.max.y - mesh.bounds.center.y;
+            float shift = -((count - 1) * pitch + meshHigh + MeatNeck);
+            for (int i = 0; i < count; i++)
+            {
+                float y;
+                MeatBagLayout.Slot(i, thickness, out y);
+                Vector3 position = new Vector3(0f, y + shift, 0f) - mesh.bounds.center;
+                centers.Add(position);
+                turns.Add(turn);
+                renderers.Add(CreateStick(item, mesh, materials, position, turn, source));
+            }
+
+            AddMeatNet(item, mesh, count, FirewoodPieces.KindOf(item) == BundleKind.Lamb, shift, renderers);
+            IncludeInLod(item, renderers);
+
+            item.lookText = FirewoodPieces.LookText(item, count);
+            item.big = false;
+            ApplyMass(item, count);
+            ShipItem prefab = FirewoodPieces.PrefabOf(item);
+            if (prefab != null)
+                item.holdDistance = prefab.holdDistance;
+
+            FitMeatBoxes(item, centers, turns, mesh.bounds);
+            float hanger = shift + (count - 1) * pitch + meshHigh + MeatBagLayout.CapDepth;
+            if (hanger < -0.01f)
+            {
+                float cord = MeatCord * 3f;
+                AddPieceBox(item, Vector3.zero, Quaternion.identity, new Vector3(0f, hanger * 0.5f, 0f), new Vector3(cord, -hanger, cord));
+            }
+            if (item.GetComponent<HangableItem>() == null)
+                item.gameObject.AddComponent<HangableItem>();
+            QuietHull(item);
+        }
+
+        // One box per chop, a little inside the mesh, plus a short stand under the bottom one.
+        private static void FitMeatBoxes(ShipItem item, List<Vector3> centers, List<Quaternion> turns, Bounds stick)
+        {
+            ClearHull(item);
+            Vector3 size = stick.size * MeatBagLayout.BoxFit;
+            float reach = Mathf.Min(size.x, Mathf.Min(size.y, size.z)) * 0.5f;
+            var corners = new List<ColliderVec3>(centers.Count * 8);
+            Vector3 half = size * 0.5f;
+            for (int i = 0; i < centers.Count; i++)
+            {
+                Quaternion turn = turns[i];
+                AddPieceBox(item, centers[i], turn, stick.center, size);
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    Vector3 local = stick.center + new Vector3(
+                        (corner & 1) == 0 ? -half.x : half.x,
+                        (corner & 2) == 0 ? -half.y : half.y,
+                        (corner & 4) == 0 ? -half.z : half.z);
+                    Vector3 point = centers[i] + turn * local;
+                    corners.Add(new ColliderVec3(point.x, point.y, point.z));
+                }
+            }
+
+            ColliderBounds stand = BundleColliderMath.PileStand(corners, 1, reach);
+            FitBox(
+                item,
+                new Bounds(
+                    new Vector3(stand.Center.X, stand.Center.Y, stand.Center.Z),
+                    new Vector3(stand.Size.X, stand.Size.Y, stand.Size.Z)));
+        }
+
+        // Two families of strands, twisted like an apple-bag net, riding the chop's
+        // own outline. Each end pulls in to a small cinch on the face. The game mesh
+        // is not readable, so the outline is the one measured from the asset.
+        private static void AddMeatNet(ShipItem item, Mesh mesh, int count, bool lamb, float shift, List<Renderer> renderers)
+        {
+            BundleKind kind = lamb ? BundleKind.Lamb : BundleKind.Pork;
+            Material material = StringMaterial(kind, FirewoodPieces.ColorOf(item));
+            if (material == null || mesh == null)
+                return;
+
+            Vector3 center = mesh.bounds.center;
+            float[] outline = MeatBagLayout.CopyOutline(lamb);
+            if (mesh.isReadable)
+            {
+                for (int i = 0; i < outline.Length; i++)
+                    outline[i] = 0f;
+                Vector3[] vertices = mesh.vertices;
+                for (int i = 0; i < vertices.Length; i++)
+                    MeatBagLayout.Note(outline, vertices[i].x - center.x, vertices[i].z - center.z);
+            }
+            MeatBagLayout.FillGaps(outline);
+
+            float pitch;
+            MeatBagLayout.Slot(1, mesh.bounds.size.y, out pitch);
+            float low = mesh.bounds.min.y - center.y + shift;
+            float high = (count - 1) * pitch + (mesh.bounds.max.y - center.y) + shift;
+            if (high < low)
+                high = low;
+
+            float cord = MeatCord;
+            float bottom = low - MeatBagLayout.CapDepth;
+            float top = high + MeatBagLayout.CapDepth;
+            const int strands = 14;
+            const int samples = 36;
+            float twist = Mathf.PI * 1.1f;
+            for (int family = 0; family < 2; family++)
+            {
+                float sign = family == 0 ? 1f : -1f;
+                for (int strand = 0; strand < strands; strand++)
+                {
+                    var points = new List<Vector3>(samples + 1);
+                    for (int sample = 0; sample <= samples; sample++)
+                    {
+                        float t = sample / (float)samples;
+                        float y = Mathf.Lerp(bottom, top, t);
+                        float angle = strand * Mathf.PI * 2f / strands + sign * t * twist;
+                        float radius = MeatBagLayout.NetRadius(outline, angle, y, low, high, cord, FirewoodBundleConfig.MeatNetGap);
+                        points.Add(new Vector3(Mathf.Cos(angle) * radius, y, Mathf.Sin(angle) * radius));
+                    }
+                    Renderer line = CreateCordLine(item, material, points, cord);
+                    if (line != null)
+                        renderers.Add(line);
+                }
+            }
+
+            AddMeatHoop(item, material, outline, low, low, high, cord, renderers);
+            AddMeatHoop(item, material, outline, high, low, high, cord, renderers);
+            Renderer loop = CreateCordPiece(item, material, new Vector3(0f, top, 0f), Vector3.zero, 0, cord * 1.5f);
+            if (loop != null)
+                renderers.Add(loop);
+        }
+
+        private static void AddMeatHoop(ShipItem item, Material material, float[] outline, float y, float low, float high, float cord, List<Renderer> renderers)
+        {
+            const int steps = 48;
+            var hoop = new List<Vector3>(steps + 1);
+            for (int k = 0; k <= steps; k++)
+            {
+                float angle = k * Mathf.PI * 2f / steps;
+                float radius = MeatBagLayout.NetRadius(outline, angle, y, low, high, cord, FirewoodBundleConfig.MeatNetGap);
+                hoop.Add(new Vector3(Mathf.Cos(angle) * radius, y, Mathf.Sin(angle) * radius));
+            }
+            Renderer band = CreateCordLine(item, material, hoop, cord);
+            if (band != null)
+                renderers.Add(band);
         }
 
         private static MeshRenderer CreateStick(
