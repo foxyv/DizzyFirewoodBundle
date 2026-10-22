@@ -40,12 +40,25 @@ namespace Dizzy.FirewoodBundle
         internal static ConfigEntry<bool> GoatCheeseEnabled;
         internal static ConfigEntry<int> MaxGoatCheese;
         internal static ConfigEntry<int> GoatCheeseLayerSizeAmount;
+        internal static ConfigEntry<bool> MeatEnabled;
+        internal static ConfigEntry<int> MaxMeat;
+        internal static ConfigEntry<float> MeatNetThicknessAmount;
+        internal static ConfigEntry<float> MeatNetGapAmount;
+        internal static ConfigEntry<float> MeatSpacingAmount;
+        internal static ConfigEntry<float> MeatNetSpacingAmount;
+        internal static ConfigEntry<float> MeatNetEndSizeAmount;
+        internal static ConfigEntry<float> MeatNetBottomHeightAmount;
+        internal static ConfigEntry<float> MeatNetHoopHeightAmount;
         internal static ConfigEntry<bool> OrangesEnabled;
         internal static ConfigEntry<int> MaxOranges;
         internal static ConfigEntry<int> OrangeLayerSizeAmount;
         internal static ConfigEntry<bool> DatesEnabled;
         internal static ConfigEntry<int> MaxDates;
         internal static ConfigEntry<float> DateLayerSpacingAmount;
+        internal static ConfigEntry<bool> PolesEnabled;
+        internal static ConfigEntry<int> MaxPoles;
+        internal static ConfigEntry<bool> ShotEnabled;
+        internal static ConfigEntry<int> MaxShot;
         internal static ConfigEntry<bool> HooksEnabled;
         internal static ConfigEntry<int> MaxHooks;
         internal static ConfigEntry<float> HookMessiness;
@@ -238,6 +251,56 @@ namespace Dizzy.FirewoodBundle
             get { return GoatCheeseLayerSizeAmount != null ? Mathf.Max(2, GoatCheeseLayerSizeAmount.Value) : 5; }
         }
 
+        internal static bool MeatIsEnabled
+        {
+            get { return MeatEnabled == null || MeatEnabled.Value; }
+        }
+
+        internal static int MeatLimit
+        {
+            get { return MaxMeat != null ? MaxMeat.Value : 8; }
+        }
+
+        internal static float MeatNetThickness
+        {
+            get { return MeatNetThicknessAmount != null ? MeatNetThicknessAmount.Value : 1.5f; }
+        }
+
+        // Centimetres in the config, metres here.
+        internal static float MeatNetGap
+        {
+            get { return (MeatNetGapAmount != null ? MeatNetGapAmount.Value : 0.4f) * 0.01f; }
+        }
+
+        // A percentage in the config, a share here.
+        internal static float MeatSpacing
+        {
+            get { return (MeatSpacingAmount != null ? MeatSpacingAmount.Value : MeatBagLayout.PitchShare * 100f) * 0.01f; }
+        }
+
+        // Centimetres in the config, metres here.
+        internal static float MeatNetSpacing
+        {
+            get { return (MeatNetSpacingAmount != null ? MeatNetSpacingAmount.Value : MeatBagLayout.DefaultSpacing * 100f) * 0.01f; }
+        }
+
+        // Centimetres in the config, metres here.
+        internal static float MeatNetEndSize
+        {
+            get { return (MeatNetEndSizeAmount != null ? MeatNetEndSizeAmount.Value : MeatBagLayout.DefaultBottomEnd * 100f) * 0.01f; }
+        }
+
+        // Centimetres in the config, metres here.
+        internal static float MeatNetBottomHeight
+        {
+            get { return (MeatNetBottomHeightAmount != null ? MeatNetBottomHeightAmount.Value : MeatBagLayout.DefaultBottomDepth * 100f) * 0.01f; }
+        }
+
+        internal static float MeatNetHoopHeight
+        {
+            get { return (MeatNetHoopHeightAmount != null ? MeatNetHoopHeightAmount.Value : MeatBagLayout.DefaultHoopHeight * 100f) * 0.01f; }
+        }
+
         internal static bool OrangesAreEnabled
         {
             get { return OrangesEnabled == null || OrangesEnabled.Value; }
@@ -266,6 +329,26 @@ namespace Dizzy.FirewoodBundle
         internal static int DateLimit
         {
             get { return MaxDates != null ? MaxDates.Value : 32; }
+        }
+
+        internal static bool PolesAreEnabled
+        {
+            get { return PolesEnabled == null || PolesEnabled.Value; }
+        }
+
+        internal static int PoleLimit
+        {
+            get { return MaxPoles != null ? MaxPoles.Value : 16; }
+        }
+
+        internal static bool ShotAreEnabled
+        {
+            get { return ShotEnabled == null || ShotEnabled.Value; }
+        }
+
+        internal static int ShotLimit
+        {
+            get { return MaxShot != null ? MaxShot.Value : 204; }
         }
 
         internal static bool HooksAreEnabled
@@ -611,6 +694,76 @@ namespace Dizzy.FirewoodBundle
                     "Most oranges in one bag, up to 999.",
                     new AcceptableValueRange<int>(1, FirewoodPieces.MaxCount)));
 
+            MeatEnabled = config.Bind(
+                "Meat",
+                "Enabled",
+                true,
+                "Hold a dried or smoked pork or lamb chop and right-click another of the same meat and the same kind to put them in a bag. Take one off to eat, cook, salt or slice it. Click an empty lamp hook with the bag to hang it. Press \\ while holding or looking at the bag to change the net's color.");
+
+            MaxMeat = config.Bind(
+                "Meat",
+                "MaxMeat",
+                8,
+                new ConfigDescription(
+                    "Most chops in one bag, up to 999. Pork and lamb do not share a bag.",
+                    new AcceptableValueRange<int>(2, FirewoodPieces.MaxCount)));
+
+            MeatNetThicknessAmount = config.Bind(
+                "Meat",
+                "Net Thickness",
+                1.5f,
+                new ConfigDescription(
+                    "How thick the strings of a pork or lamb bag are. 1 is a thin net, 4 a heavy one. The bag picks up the new thickness when it changes.",
+                    new AcceptableValueRange<float>(0.3f, 4f)));
+
+            MeatNetGapAmount = config.Bind(
+                "Meat",
+                "Net Gap",
+                0.4f,
+                new ConfigDescription(
+                    "How far the net stands off the meat, in centimetres. 0.4 sits just outside. Smaller is tighter, and below zero the net tucks into the meat. The bag picks up the change when it changes.",
+                    new AcceptableValueRange<float>(-2f, 4f)));
+
+            MeatSpacingAmount = config.Bind(
+                "Meat",
+                "Meat Spacing",
+                MeatBagLayout.PitchShare * 100f,
+                new ConfigDescription(
+                    "How far apart the chops in a bag are, as a percentage of one chop's thickness. 100 stacks them flush. Lower presses them into each other, which closes the gaps between them. Higher spreads them. The bag picks up the change when it changes.",
+                    new AcceptableValueRange<float>(50f, 150f)));
+
+            MeatNetSpacingAmount = config.Bind(
+                "Meat",
+                "Net Spacing",
+                MeatBagLayout.DefaultSpacing * 100f,
+                new ConfigDescription(
+                    "How far apart the net's strings are, in centimetres, measured round the bag. Bigger gives a more open net with fewer strings. Net Gap is a different setting: it sets how far the net stands off the meat. The bag picks up the change when it changes.",
+                    new AcceptableValueRange<float>(2.5f, 15f)));
+
+            MeatNetEndSizeAmount = config.Bind(
+                "Meat",
+                "Net End Size",
+                MeatBagLayout.DefaultBottomEnd * 100f,
+                new ConfigDescription(
+                    "The radius, in centimetres, of the circle the strings gather into at the bottom of the bag. Bigger gives a wider, flatter bottom. The bag picks up the change when it changes.",
+                    new AcceptableValueRange<float>(0.5f, 6f)));
+
+            MeatNetBottomHeightAmount = config.Bind(
+                "Meat",
+                "Net Bottom Height",
+                MeatBagLayout.DefaultBottomDepth * 100f,
+                new ConfigDescription(
+                    "How far below the meat the ring at the bottom of the net hangs, in centimetres. Smaller sits closer to the meat. The bag picks up the change when it changes.",
+                    new AcceptableValueRange<float>(0.2f, 4f)));
+
+            MeatNetHoopHeightAmount = config.Bind(
+                "Meat",
+                "Net Hoop Height",
+                MeatBagLayout.DefaultHoopHeight * 100f,
+                new ConfigDescription(
+                    "How far up from the bottom of the meat the hoop round the bag sits, in centimetres. 0 puts it level with the bottom. The bag picks up the change when it changes.",
+                    new AcceptableValueRange<float>(0f, 12f)));
+
             OrangeLayerSizeAmount = config.Bind(
                 "Orange Bags",
                 "Layer Size",
@@ -640,6 +793,34 @@ namespace Dizzy.FirewoodBundle
                 new ConfigDescription(
                     "Multiplier for how far apart the layers of a date rack hang. Higher spaces them further apart.",
                     new AcceptableValueRange<float>(0.3f, 6f)));
+
+            PolesEnabled = config.Bind(
+                "Wood Poles",
+                "Enabled",
+                true,
+                "Hold a wood pole from the Tent and Plank mod and right-click another pole to tie them. Poles in a bundle are cut down to 1 m. Press G on a loose pole to gather loose poles nearby, or in an open crate. Their shop bundle of four stays their own item.");
+
+            MaxPoles = config.Bind(
+                "Wood Poles",
+                "MaxPoles",
+                16,
+                new ConfigDescription(
+                    "Most wood poles in a bundle, up to 999. Each pole in the bundle is 1 m.",
+                    new AcceptableValueRange<int>(2, FirewoodPieces.MaxCount)));
+
+            ShotEnabled = config.Bind(
+                "Dangerous Waters",
+                "Round Shot Enabled",
+                true,
+                "Hold a cannonball from Dangerous Waters and right-click another of the same calibre to stack them in a pyramid. Press G on a loose one to gather matching shot nearby, or in an open crate. Loading a gun takes one from the stack.");
+
+            MaxShot = config.Bind(
+                "Dangerous Waters",
+                "MaxShot",
+                204,
+                new ConfigDescription(
+                    "Most round shot in one pyramid. 204 is a full pyramid, eight balls on a side.",
+                    new AcceptableValueRange<int>(2, FirewoodPieces.MaxCount)));
 
             HooksEnabled = config.Bind(
                 "Hooks",

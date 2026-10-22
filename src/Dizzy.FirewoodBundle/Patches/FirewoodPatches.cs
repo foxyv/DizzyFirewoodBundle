@@ -60,7 +60,7 @@ namespace Dizzy.FirewoodBundle
                         AimAtNailedBundle(__instance, ___debugEditorPointer, ___raycastRay, ref ___pointedAtButton, ref ___currentLookDistance);
                     if (FirewoodBundleConfig.HooksAreEnabled)
                         AimAtHangingLine(__instance, ___debugEditorPointer, ___raycastRay, ref ___pointedAtButton, ref ___currentLookDistance);
-                    if (BundleKind.AppleBag.IsEnabled || BundleKind.OrangeBag.IsEnabled || BundleKind.GoatCheeseBag.IsEnabled)
+                    if (BundleKind.AppleBag.IsEnabled || BundleKind.OrangeBag.IsEnabled || BundleKind.GoatCheeseBag.IsEnabled || BundleKind.Pork.IsEnabled)
                         AimAtHangingBag(__instance, ___debugEditorPointer, ___raycastRay, ref ___pointedAtButton, ref ___currentLookDistance);
                 }
                 return;
@@ -378,7 +378,8 @@ namespace Dizzy.FirewoodBundle
                 {
                     BundleKind kind = FirewoodPieces.KindOf(ship);
                     HangableItem hang = ship.GetComponent<HangableItem>();
-                    if (kind != null && kind.IsBag && hang != null && hang.IsHanging())
+                    bool hangingMeat = MeatStacks.IsMeat(ship) && hang != null && hang.IsHanging();
+                    if (kind != null && (kind.IsBag || hangingMeat) && hang != null && hang.IsHanging())
                     {
                         kinds.Add(BagLookHit.HangingBag);
                         targets.Add(ship);
@@ -543,6 +544,8 @@ namespace Dizzy.FirewoodBundle
         private static void Postfix(ShipItem __state)
         {
             FirewoodBundleBuilder.MatchLookLayer(__state);
+            if (FirewoodPieces.KindOf(__state) == BundleKind.WoodPole && FirewoodPieces.CountOf(__state) > 1)
+                TentPoles.Release(__state);
         }
     }
 
@@ -887,8 +890,10 @@ namespace Dizzy.FirewoodBundle
         {
             if (FirewoodPieces.IsPiece(__instance))
                 FirewoodPieces.NotePickedUp();
+            if (FirewoodPieces.KindOf(__instance) == BundleKind.WoodPole && FirewoodPieces.CountOf(__instance) > 1)
+                TentPoles.SetBundled(__instance, true);
             // Lifting a hanging bundle takes it off its hook, ready to hang somewhere else.
-            if (FirewoodPieces.KindOf(__instance) != null && FirewoodPieces.KindOf(__instance).Hangs)
+            if (FirewoodPieces.IsHungBundle(__instance))
             {
                 HangableItem hang = __instance.GetComponent<HangableItem>();
                 if (hang != null && hang.IsHanging())
@@ -913,6 +918,7 @@ namespace Dizzy.FirewoodBundle
     }
 
     [HarmonyPatch(typeof(ShipItem), nameof(ShipItem.UpdateLookText))]
+    [HarmonyAfter(TentPoles.PluginGuid)]
     internal static class FirewoodTooltipPatch
     {
         private static void Postfix(ShipItem __instance)
@@ -922,9 +928,15 @@ namespace Dizzy.FirewoodBundle
             {
                 __instance.lookText = FirewoodPieces.LookText(__instance, count);
                 // Food keeps the game's own description, e.g. "smoked sausage".
-                ShipItem prefab = FirewoodPieces.PrefabOf(__instance);
-                if (prefab != null && !(__instance is ShipItemFood))
-                    __instance.description = prefab.description;
+                // A wood pole keeps its length, which Tent and Plank writes as the description.
+                if (FirewoodPieces.KindOf(__instance) == BundleKind.WoodPole)
+                    __instance.description = BundleColliderMath.PoleLengthText(__instance.health);
+                else
+                {
+                    ShipItem prefab = FirewoodPieces.PrefabOf(__instance);
+                    if (prefab != null && !(__instance is ShipItemFood))
+                        __instance.description = prefab.description;
+                }
             }
 
             if (HookLinePieces.IsLine(__instance))
@@ -1087,7 +1099,7 @@ namespace Dizzy.FirewoodBundle
                 return;
             }
 
-            if ((count > 1 || (FirewoodPieces.KindOf(item) != null && FirewoodPieces.KindOf(item).Hangs)) && held == null)
+            if ((count > 1 || FirewoodPieces.IsHungBundle(item)) && held == null)
             {
                 string remove = "Remove " + FirewoodPieces.KindOf(item).Single;
                 ___controlsText.text = item.nailed ? "\n" + remove : "pick up\n" + remove;
@@ -1170,6 +1182,7 @@ namespace Dizzy.FirewoodBundle
     }
 
     [HarmonyPatch(typeof(SaveablePrefab), nameof(SaveablePrefab.Load))]
+    [HarmonyAfter(TentPoles.PluginGuid)]
     internal static class FirewoodLoadPatch
     {
         private static void Postfix(SaveablePrefab __instance, SavePrefabData data)

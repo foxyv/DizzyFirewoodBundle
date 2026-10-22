@@ -7,12 +7,14 @@ namespace Dizzy.FirewoodBundle
     [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
     [BepInDependency("com.dizzy.sailwind.fixes", BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(HookLinePieces.BetterFishingGuid, BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency(TentPoles.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency(Munitions.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInProcess("Sailwind.exe")]
     public class Plugin : BaseUnityPlugin
     {
         public const string PluginGuid = "com.dizzy.sailwind.firewoodbundle";
         public const string PluginName = "Dizzy Bundle Up";
-        public const string PluginVersion = "0.12.1";
+        public const string PluginVersion = "0.15.6";
 
         internal static ManualLogSource Log;
         internal static Plugin Instance;
@@ -30,6 +32,8 @@ namespace Dizzy.FirewoodBundle
             {
                 _harmony.PatchAll(typeof(Plugin).Assembly);
                 FirewoodBigLookPatch.Apply(_harmony);
+                TentPoles.Patch(_harmony);
+                Munitions.Patch(_harmony);
             }
             catch (System.Exception ex)
             {
@@ -56,8 +60,14 @@ namespace Dizzy.FirewoodBundle
                 + ", MaxCheese=" + FirewoodBundleConfig.MaxCheese.Value
                 + ", Goat Cheese=" + FirewoodBundleConfig.GoatCheeseEnabled.Value
                 + ", MaxGoatCheese=" + FirewoodBundleConfig.MaxGoatCheese.Value
+                + ", Meat=" + FirewoodBundleConfig.MeatEnabled.Value
+                + ", MaxMeat=" + FirewoodBundleConfig.MaxMeat.Value
                 + ", Orange Bags=" + FirewoodBundleConfig.OrangesEnabled.Value
                 + ", MaxOranges=" + FirewoodBundleConfig.MaxOranges.Value
+                + ", Wood Poles=" + FirewoodBundleConfig.PolesEnabled.Value
+                + ", MaxPoles=" + FirewoodBundleConfig.MaxPoles.Value
+                + ", Round Shot=" + FirewoodBundleConfig.ShotEnabled.Value
+                + ", MaxShot=" + FirewoodBundleConfig.MaxShot.Value
                 + ", Dates=" + FirewoodBundleConfig.DatesEnabled.Value
                 + ", MaxDates=" + FirewoodBundleConfig.MaxDates.Value
                 + ", Hooks=" + FirewoodBundleConfig.HooksEnabled.Value

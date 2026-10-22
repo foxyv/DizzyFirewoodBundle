@@ -10,6 +10,8 @@ The number is the item's prefab ID in the game. Food comes from the game's own f
 - [x] Candles (`131` is the crate): ribbon bundles that load lanterns
 - [x] Fishing hooks (`104` is the crate): strung on a line that hangs from a lamp hook
 - [x] Better Fishing lures (`803` spoon, `804` swimbait, `805` topwater): strung on lines of their own kind, only while that mod is loaded
+- [x] Tent and Plank wood poles (`643`): tied like firewood and cut to 1 m. Their shop bundle (`644`) stays theirs
+- [x] Dangerous Waters round shot (`31001` 4 lb, `31002` 12 lb, `31003` 18 lb): a square pyramid, no cord. Each calibre keeps to itself. Loading a gun takes one
 
 ## Non-food candidates
 
@@ -20,6 +22,7 @@ The number is the item's prefab ID in the game. Food comes from the game's own f
 - [ ] Mugs: 100 wood, 101 clay, 102 metal, 103 gold. A stacked column, or hung by their handles from a lamp hook.
 - [ ] Lantern oil bottles (132). A tied bundle that feeds lanterns one at a time, like candles.
 - [ ] Elixirs: 96 energy, 97 sleep, 98 random. A small tied cluster or a net bag.
+- [ ] Dangerous Waters canister (`31004`) and powder kegs (`31005` small, `31006` large).
 
 ### Good fits for existing shapes
 
@@ -55,9 +58,9 @@ Furniture, beds, sails, stoves, racks, paintings, clocks and compasses are place
 
 ## Meat
 
-- [ ] 39 pork
+- [x] 39 pork: meat bags, chops lying flat in a cord mesh
 - [x] 41 sausage: stacks, plus hanging bunches on a lamp hook
-- [ ] 54 lamb chop
+- [x] 54 lamb chop: meat bags, the same as pork, and the two do not mix
 - [ ] 154 chicken
 
 ## Fruit and vegetables

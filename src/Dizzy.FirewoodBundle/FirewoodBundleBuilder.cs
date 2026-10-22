@@ -54,6 +54,13 @@ namespace Dizzy.FirewoodBundle
         // about a third out of balance, so it tips about 8 degrees.
         private const float RackTip = 25f;
         private const float AppleNeck = 0.012f;
+        // How far the top of a meat bag sits below the hook.
+        private const float MeatNeck = 0.05f;
+
+        private static float MeatCord
+        {
+            get { return AppleNetBase * FirewoodBundleConfig.MeatNetThickness; }
+        }
         // Colors of the mod's own parts: the string on hanging sausages, and the iron of
         // a date rack.
         private static readonly Color SausageString = new Color(0.82f, 0.7f, 0.52f);
@@ -95,12 +102,33 @@ namespace Dizzy.FirewoodBundle
             {
                 item.mass = prefab.mass > 0f ? prefab.mass : item.mass;
                 item.holdDistance = prefab.holdDistance;
+                item.furniturePlaceHeight = prefab.furniturePlaceHeight;
                 item.lookText = prefab.lookText;
                 item.description = prefab.description;
                 item.big = prefab.big;
                 CopyColliders(prefab.gameObject, item.gameObject);
                 if (item.itemRigidbodyC != null)
                     CopyColliders(prefab.gameObject, item.itemRigidbodyC.gameObject);
+                if (FirewoodPieces.KindOf(item) == BundleKind.WoodPole)
+                {
+                    item.wallAttachment = prefab.wallAttachment;
+                    TentPoles.ApplyLength(item, item.health);
+                    TentPoles.SetBundled(item, false);
+                }
+                else if (FirewoodPieces.KindOf(item) != null && FirewoodPieces.KindOf(item).IsMunition)
+                {
+                    ShowMunitionSource(item, true);
+                }
+                else if (MeatStacks.IsMeat(item))
+                {
+                    HangableItem hang = item.GetComponent<HangableItem>();
+                    if (hang != null)
+                    {
+                        if (hang.IsHanging())
+                            hang.DisconnectJoint();
+                        Object.Destroy(hang);
+                    }
+                }
             }
             else
             {
@@ -133,7 +161,7 @@ namespace Dizzy.FirewoodBundle
             if (item == null)
                 return;
             BundleKind kind = FirewoodPieces.KindOf(item);
-            bool hanging = kind != null && kind.Hangs;
+            bool hanging = (kind != null && kind.Hangs) || (MeatStacks.IsMeat(item) && HookLinePieces.IsHanging(item));
             if (!hanging && FirewoodPieces.CountOf(item) <= 1)
                 return;
 
@@ -207,10 +235,30 @@ namespace Dizzy.FirewoodBundle
                 ApplyHanging(item);
                 return;
             }
+            if (FirewoodPieces.KindOf(item) != null && FirewoodPieces.KindOf(item).IsMunition)
+            {
+                ApplyMunition(item);
+                return;
+            }
 
             int count = FirewoodPieces.CountOf(item);
             if (count <= 1)
                 return;
+
+            BundleKind meatKind = FirewoodPieces.KindOf(item);
+            if (meatKind == BundleKind.Pork || meatKind == BundleKind.Lamb)
+            {
+                ApplyMeatBag(item, count);
+                return;
+            }
+
+            // Cut every pole in the bundle down to an armful before the sticks are copied
+            // from the mesh. A longer pole joins by losing the extra length.
+            if (FirewoodPieces.KindOf(item) == BundleKind.WoodPole)
+            {
+                TentPoles.ApplyLength(item, BundleColliderMath.PoleBundleMetres);
+                TentPoles.Release(item);
+            }
 
             float cross;
             int longAxis;
@@ -265,8 +313,16 @@ namespace Dizzy.FirewoodBundle
 
             item.lookText = FirewoodPieces.LookText(item, count);
             ShipItem prefab = FirewoodPieces.PrefabOf(item);
-            if (prefab != null)
+            if (kind == BundleKind.WoodPole)
+            {
+                item.description = BundleColliderMath.PoleLengthText(item.health);
+                item.wallAttachment = false;
+                TentPoles.SetBundled(item, true);
+            }
+            else if (prefab != null)
+            {
                 item.description = prefab.description;
+            }
             bool wasTwoHanded = item.big;
             item.big = true;
             if (!wasTwoHanded)
@@ -1372,7 +1428,23 @@ namespace Dizzy.FirewoodBundle
         {
             if (points == null || points.Count < 2)
                 return null;
-            Mesh mesh = NetStrandMesh(points, width > 0f ? width : NetWidth);
+            return CreateCordObject(item, material, NetStrandMesh(points, width > 0f ? width : NetWidth));
+        }
+
+        // Several strands as one object.
+        private static Renderer CreateCordLines(ShipItem item, Material material, List<List<Vector3>> strands, float width)
+        {
+            Mesh joined = null;
+            for (int i = 0; i < strands.Count; i++)
+            {
+                if (strands[i] != null && strands[i].Count >= 2)
+                    joined = JoinCords(joined, NetStrandMesh(strands[i], width));
+            }
+            return CreateCordObject(item, material, joined);
+        }
+
+        private static Renderer CreateCordObject(ShipItem item, Material material, Mesh mesh)
+        {
             if (mesh == null)
                 return null;
             var piece = new GameObject(StringName);
@@ -1497,6 +1569,283 @@ namespace Dizzy.FirewoodBundle
                 field.SetValue(pointer, value);
         }
 
+        // Round shot keeps its mesh on a child, so each ball is a copy of that child.
+        // The copies sit in a square pyramid. One pyramid collider covers the stack,
+        // a little inside the iron. A capsule per ball stalls the game when it drops.
+        // There is no cord.
+        private static void ApplyMunition(ShipItem item)
+        {
+            int count = FirewoodPieces.CountOf(item);
+            if (count <= 1)
+                return;
+
+            var sources = new List<Transform>();
+            for (int i = 0; i < item.transform.childCount; i++)
+            {
+                Transform child = item.transform.GetChild(i);
+                if (IsBundlePart(child))
+                    continue;
+                if (child.GetComponentInChildren<Renderer>(true) == null)
+                    continue;
+                sources.Add(child);
+            }
+
+            Vector3 pieceCenter;
+            Vector3 pieceSize;
+            if (!MeasureMunition(item, sources, out pieceCenter, out pieceSize))
+            {
+                pieceCenter = Vector3.zero;
+                pieceSize = new Vector3(0.14f, 0.14f, 0.14f);
+            }
+
+            float diameter = Mathf.Max(pieceSize.x, Mathf.Max(pieceSize.y, pieceSize.z));
+            if (diameter < 0.05f)
+                diameter = 0.05f;
+            ShotPlace[] places = ShotPyramid.Layout(count, diameter);
+            var centers = new List<Vector3>(places.Length);
+            for (int i = 0; i < places.Length; i++)
+                centers.Add(new Vector3(places[i].X, places[i].Y, places[i].Z));
+            ClearSticks(item);
+
+            var renderers = new List<Renderer>();
+            for (int i = 0; i < centers.Count; i++)
+            {
+                for (int s = 0; s < sources.Count; s++)
+                {
+                    Transform source = sources[s];
+                    GameObject copy = Object.Instantiate(source.gameObject, item.transform, false);
+                    copy.name = StickName;
+                    copy.transform.localPosition = centers[i] + source.localPosition;
+                    copy.transform.localRotation = source.localRotation;
+                    copy.transform.localScale = source.localScale;
+                    SetLayer(copy.transform, item.gameObject.layer);
+                    StripPhysics(copy);
+                    PaintOutline(copy, item);
+                    Renderer[] drawn = copy.GetComponentsInChildren<Renderer>(true);
+                    for (int r = 0; r < drawn.Length; r++)
+                    {
+                        if (drawn[r] != null)
+                        {
+                            drawn[r].enabled = true;
+                            renderers.Add(drawn[r]);
+                        }
+                    }
+                }
+            }
+
+            if (sources.Count > 0)
+                ShowMunitionSource(item, false);
+
+            IncludeInLod(item, renderers);
+
+            item.lookText = FirewoodPieces.LookText(item, count);
+            ShipItem prefab = FirewoodPieces.PrefabOf(item);
+            if (prefab != null)
+                item.description = prefab.description;
+            bool wasTwoHanded = item.big;
+            item.big = true;
+            if (!wasTwoHanded)
+                AdoptTwoHandedHold(item);
+            ApplyMass(item, count);
+            ApplyHoldDistance(item, centers, 1, diameter);
+
+            ClearHull(item);
+            SetOwnColliders(item.gameObject, false);
+            if (item.itemRigidbodyC != null)
+                SetOwnColliders(item.itemRigidbodyC.gameObject, false);
+            var balls = new ShotPlace[centers.Count];
+            for (int i = 0; i < centers.Count; i++)
+                balls[i] = new ShotPlace(centers[i].x, centers[i].y, centers[i].z);
+            ShotPlace[] corners = ShotPyramid.Collider(balls, diameter * 0.5f);
+            if (corners.Length >= 5)
+            {
+                var vertices = new List<Vector3>(corners.Length);
+                for (int i = 0; i < corners.Length; i++)
+                    vertices.Add(pieceCenter + new Vector3(corners[i].X, corners[i].Y, corners[i].Z));
+                Mesh hull = KeepHull(item, vertices, PyramidTriangles());
+                if (hull != null)
+                    AddHull(item, hull);
+            }
+
+            QuietHull(item);
+        }
+
+        // Base, then four sides up to the apex. Convex collision uses the corners.
+        private static List<int> PyramidTriangles()
+        {
+            return new List<int>
+            {
+                0, 2, 1,
+                0, 3, 2,
+                0, 1, 4,
+                1, 2, 4,
+                2, 3, 4,
+                3, 0, 4
+            };
+        }
+
+        private static bool MeasureMunition(ShipItem item, List<Transform> sources, out Vector3 center, out Vector3 size)
+        {
+            center = Vector3.zero;
+            size = Vector3.zero;
+            bool any = false;
+            Bounds local = new Bounds(Vector3.zero, Vector3.zero);
+            for (int s = 0; s < sources.Count; s++)
+            {
+                MeshFilter[] filters = sources[s].GetComponentsInChildren<MeshFilter>(true);
+                for (int f = 0; f < filters.Length; f++)
+                {
+                    MeshFilter filter = filters[f];
+                    if (filter == null || filter.sharedMesh == null)
+                        continue;
+                    Bounds mesh = filter.sharedMesh.bounds;
+                    for (int corner = 0; corner < 8; corner++)
+                    {
+                        Vector3 point = new Vector3(
+                            (corner & 1) == 0 ? mesh.min.x : mesh.max.x,
+                            (corner & 2) == 0 ? mesh.min.y : mesh.max.y,
+                            (corner & 4) == 0 ? mesh.min.z : mesh.max.z);
+                        Vector3 at = item.transform.InverseTransformPoint(filter.transform.TransformPoint(point));
+                        if (!any)
+                        {
+                            local = new Bounds(at, Vector3.zero);
+                            any = true;
+                        }
+                        else
+                        {
+                            local.Encapsulate(at);
+                        }
+                    }
+                }
+            }
+
+            if (!any)
+                return false;
+            center = local.center;
+            size = local.size;
+            return true;
+        }
+
+        private static void ShowMunitionSource(ShipItem item, bool shown)
+        {
+            if (item == null)
+                return;
+            Renderer[] renderers = item.GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                Renderer renderer = renderers[i];
+                if (renderer == null || IsBundlePart(renderer.transform, item.transform))
+                    continue;
+                renderer.enabled = shown;
+            }
+
+            Collider[] colliders = item.GetComponentsInChildren<Collider>(true);
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                Collider collider = colliders[i];
+                if (collider == null || collider.transform == item.transform)
+                    continue;
+                if (item.itemRigidbodyC != null && collider.transform == item.itemRigidbodyC.transform)
+                    continue;
+                if (IsBundlePart(collider.transform, item.transform))
+                    continue;
+                collider.enabled = shown;
+            }
+
+            if (shown)
+            {
+                SetOwnColliders(item.gameObject, true);
+                if (item.itemRigidbodyC != null)
+                    SetOwnColliders(item.itemRigidbodyC.gameObject, true);
+                var shownRenderers = new List<Renderer>();
+                for (int i = 0; i < renderers.Length; i++)
+                {
+                    Renderer renderer = renderers[i];
+                    if (renderer != null && renderer.enabled)
+                        shownRenderers.Add(renderer);
+                }
+                IncludeInLod(item, shownRenderers);
+            }
+        }
+
+        private static void SetOwnColliders(GameObject go, bool enabled)
+        {
+            if (go == null)
+                return;
+            Collider[] colliders = go.GetComponents<Collider>();
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                if (colliders[i] != null)
+                    colliders[i].enabled = enabled;
+            }
+        }
+
+        private static bool IsBundlePart(Transform child)
+        {
+            return child != null && IsBundlePart(child, child.parent);
+        }
+
+        private static bool IsBundlePart(Transform child, Transform root)
+        {
+            Transform cursor = child;
+            while (cursor != null && cursor != root)
+            {
+                string name = cursor.name;
+                if (name == StickName || name == StringName || name == KnotName || name == HullName || name == PieceName)
+                    return true;
+                cursor = cursor.parent;
+            }
+
+            return false;
+        }
+
+        private static void SetLayer(Transform transform, int layer)
+        {
+            if (transform == null)
+                return;
+            transform.gameObject.layer = layer;
+            for (int i = 0; i < transform.childCount; i++)
+                SetLayer(transform.GetChild(i), layer);
+        }
+
+        private static void StripPhysics(GameObject copy)
+        {
+            Collider[] colliders = copy.GetComponentsInChildren<Collider>(true);
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                if (colliders[i] != null)
+                    Object.DestroyImmediate(colliders[i]);
+            }
+
+            Rigidbody[] bodies = copy.GetComponentsInChildren<Rigidbody>(true);
+            for (int i = 0; i < bodies.Length; i++)
+            {
+                if (bodies[i] != null)
+                    Object.DestroyImmediate(bodies[i]);
+            }
+        }
+
+        private static void PaintOutline(GameObject copy, ShipItem item)
+        {
+            Outline root = item.GetComponent<Outline>();
+            Renderer[] renderers = copy.GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                Renderer renderer = renderers[i];
+                if (renderer == null)
+                    continue;
+                Outline outline = renderer.GetComponent<Outline>();
+                if (outline == null)
+                    outline = renderer.gameObject.AddComponent<Outline>();
+                outline.enabled = false;
+                if (root == null)
+                    continue;
+                outline.color = root.color;
+                outline.eraseRenderer = root.eraseRenderer;
+                outline.originalLayer = root.originalLayer;
+            }
+        }
+
         private static void ClearSticks(ShipItem item)
         {
             for (int i = item.transform.childCount - 1; i >= 0; i--)
@@ -1508,6 +1857,185 @@ namespace Dizzy.FirewoodBundle
                     ReleaseStringMesh(child);
                 Object.Destroy(child.gameObject);
             }
+        }
+
+        // Chops lie flat, all the same way, in a tube. The net is the apple-bag weave,
+        // pulled in so it meets the chop's outline.
+        private static void ApplyMeatBag(ShipItem item, int count)
+        {
+            MeshFilter filter = item.GetComponent<MeshFilter>();
+            Mesh mesh = filter != null ? filter.sharedMesh : null;
+            MeshRenderer source = item.GetComponent<MeshRenderer>();
+            if (mesh == null || source == null)
+                return;
+
+            ClearSticks(item);
+            ClearHull(item);
+            source.enabled = false;
+
+            float thickness = mesh.bounds.size.y;
+            Quaternion turn = Quaternion.identity;
+            var centers = new List<Vector3>(count);
+            var turns = new List<Quaternion>(count);
+            var renderers = new List<Renderer>(count + 32);
+            Material[] materials = source.sharedMaterials;
+            // The top of the tube sits just under the origin, so the bag hangs down from a hook.
+            float pitch;
+            MeatBagLayout.Slot(1, thickness, FirewoodBundleConfig.MeatSpacing, out pitch);
+            float meshHigh = mesh.bounds.max.y - mesh.bounds.center.y;
+            float shift = -((count - 1) * pitch + meshHigh + MeatNeck);
+            for (int i = 0; i < count; i++)
+            {
+                float y;
+                MeatBagLayout.Slot(i, thickness, FirewoodBundleConfig.MeatSpacing, out y);
+                Vector3 position = new Vector3(0f, y + shift, 0f) - mesh.bounds.center;
+                centers.Add(position);
+                turns.Add(turn);
+                renderers.Add(CreateStick(item, mesh, materials, position, turn, source));
+            }
+
+            AddMeatNet(item, mesh, count, FirewoodPieces.KindOf(item) == BundleKind.Lamb, shift, renderers);
+            IncludeInLod(item, renderers);
+
+            item.lookText = FirewoodPieces.LookText(item, count);
+            item.big = false;
+            ApplyMass(item, count);
+            ShipItem prefab = FirewoodPieces.PrefabOf(item);
+            if (prefab != null)
+                item.holdDistance = prefab.holdDistance;
+
+            // The bag rests on the underside of its bottom ring, not on the bottom chop.
+            float low = mesh.bounds.min.y - mesh.bounds.center.y + shift;
+            float footY = MeatBagLayout.FootY(low, FirewoodBundleConfig.MeatNetBottomHeight, MeatCord * 1.5f);
+            // Set on a table, the origin goes this far above it, so the foot is what touches.
+            item.furniturePlaceHeight = MeatBagLayout.PlaceHeight(footY);
+            FitMeatBoxes(item, centers, turns, mesh.bounds, footY);
+            float hanger = shift + (count - 1) * pitch + meshHigh + MeatBagLayout.CapDepth;
+            if (hanger < -0.01f)
+            {
+                float cord = MeatCord * 3f;
+                AddPieceBox(item, Vector3.zero, Quaternion.identity, new Vector3(0f, hanger * 0.5f, 0f), new Vector3(cord, -hanger, cord));
+            }
+            if (item.GetComponent<HangableItem>() == null)
+                item.gameObject.AddComponent<HangableItem>();
+            QuietHull(item);
+        }
+
+        // One box per chop, a little inside the mesh, plus a short stand under the bottom one.
+        private static void FitMeatBoxes(ShipItem item, List<Vector3> centers, List<Quaternion> turns, Bounds stick, float footY)
+        {
+            ClearHull(item);
+            Vector3 size = stick.size * MeatBagLayout.BoxFit;
+            float reach = Mathf.Min(size.x, Mathf.Min(size.y, size.z)) * 0.5f;
+            var corners = new List<ColliderVec3>(centers.Count * 8);
+            Vector3 half = size * 0.5f;
+            for (int i = 0; i < centers.Count; i++)
+            {
+                Quaternion turn = turns[i];
+                AddPieceBox(item, centers[i], turn, stick.center, size);
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    Vector3 local = stick.center + new Vector3(
+                        (corner & 1) == 0 ? -half.x : half.x,
+                        (corner & 2) == 0 ? -half.y : half.y,
+                        (corner & 4) == 0 ? -half.z : half.z);
+                    Vector3 point = centers[i] + turn * local;
+                    corners.Add(new ColliderVec3(point.x, point.y, point.z));
+                }
+            }
+
+            // The stand reaches down to the foot, so the bag rests on its bottom ring. Without
+            // this point it would stand on the bottom chop and the ring would sink into the table.
+            corners.Add(new ColliderVec3(0f, footY, 0f));
+            ColliderBounds stand = BundleColliderMath.PileStand(corners, 1, reach);
+            FitBox(
+                item,
+                new Bounds(
+                    new Vector3(stand.Center.X, stand.Center.Y, stand.Center.Z),
+                    new Vector3(stand.Size.X, stand.Size.Y, stand.Size.Z)));
+        }
+
+        // Two families of strands, twisted like an apple-bag net, riding the chop's
+        // own outline. Each end pulls in to a small cinch on the face. The game mesh
+        // is not readable, so the outline is the one measured from the asset.
+        private static void AddMeatNet(ShipItem item, Mesh mesh, int count, bool lamb, float shift, List<Renderer> renderers)
+        {
+            BundleKind kind = lamb ? BundleKind.Lamb : BundleKind.Pork;
+            Material material = StringMaterial(kind, FirewoodPieces.ColorOf(item));
+            if (material == null || mesh == null)
+                return;
+
+            Vector3 center = mesh.bounds.center;
+            float cord = MeatCord;
+            var path = new MeatNetPath(MeatBagLayout.OutlineOf(lamb), cord, FirewoodBundleConfig.MeatNetGap, FirewoodBundleConfig.MeatNetSpacing, FirewoodBundleConfig.MeatNetEndSize,
+                FirewoodBundleConfig.MeatNetBottomHeight, FirewoodBundleConfig.MeatNetHoopHeight);
+
+            float pitch;
+            MeatBagLayout.Slot(1, mesh.bounds.size.y, FirewoodBundleConfig.MeatSpacing, out pitch);
+            float low = mesh.bounds.min.y - center.y + shift;
+            float high = (count - 1) * pitch + (mesh.bounds.max.y - center.y) + shift;
+            if (high < low)
+                high = low;
+
+            float bottom = low - path.BottomDepth;
+            float top = high + MeatBagLayout.CapDepth;
+            float[] heights = MeatBagLayout.NetHeights(path, bottom, low, high, top);
+            // One piece of cord per family: the strands are joined, so a net is a few
+            // objects and not dozens.
+            for (int family = 0; family < 2; family++)
+            {
+                var strands = new List<List<Vector3>>(path.Strands);
+                for (int strand = 0; strand < path.Strands; strand++)
+                {
+                    var points = new List<Vector3>(heights.Length);
+                    for (int sample = 0; sample < heights.Length; sample++)
+                    {
+                        float y = heights[sample];
+                        float px;
+                        float pz;
+                        MeatBagLayout.StrandPoint(path, strand, family, y, bottom, top, low, high, out px, out pz);
+                        points.Add(new Vector3(px, y, pz));
+                    }
+                    strands.Add(points);
+                }
+                Renderer familyCord = CreateCordLines(item, material, strands, cord);
+                if (familyCord != null)
+                    renderers.Add(familyCord);
+            }
+
+            AddMeatHoop(item, material, path, MeatBagLayout.HoopY(path, low, high), low, high, cord, renderers);
+            AddMeatHoop(item, material, path, high, low, high, cord, renderers);
+            // The strands end on a ring at the bottom, as the loop at the top ties them there.
+            // It runs straight from one strand's end to the next, and it is a little thicker
+            // than a strand.
+            float[] ring = MeatBagLayout.BottomRing(path, bottom, top, low, high);
+            var corners = new List<Vector3>(ring.Length / 2);
+            for (int i = 0; i < ring.Length; i += 2)
+                corners.Add(new Vector3(ring[i], bottom, ring[i + 1]));
+            Renderer bottomRing = CreateCordLine(item, material, corners, cord * 1.5f);
+            if (bottomRing != null)
+                renderers.Add(bottomRing);
+            // The cord runs up from where the strands meet to the lamp hook's peg.
+            Renderer loop = CreateCordPiece(item, material, new Vector3(0f, top, 0f), new Vector3(0f, MeatBagLayout.HookReach, 0f), 0, cord * 1.5f);
+            if (loop != null)
+                renderers.Add(loop);
+        }
+
+        private static void AddMeatHoop(ShipItem item, Material material, MeatNetPath path, float y, float low, float high, float cord, List<Renderer> renderers)
+        {
+            // Steps are equal lengths along the net, so a tight bend still gets points.
+            const int steps = MeatBagLayout.HoopSteps;
+            var hoop = new List<Vector3>(steps + 1);
+            for (int k = 0; k <= steps; k++)
+            {
+                float px;
+                float pz;
+                MeatBagLayout.HoopPoint(path, k, steps, y, low, high, out px, out pz);
+                hoop.Add(new Vector3(px, y, pz));
+            }
+            Renderer band = CreateCordLine(item, material, hoop, cord);
+            if (band != null)
+                renderers.Add(band);
         }
 
         private static MeshRenderer CreateStick(
@@ -1587,14 +2115,17 @@ namespace Dizzy.FirewoodBundle
                 if (child.name != StickName && child.name != StringName && child.name != KnotName)
                     continue;
 
-                Outline outline = child.GetComponent<Outline>();
-                if (outline == null)
-                    continue;
-
-                outline.color = root.color;
-                outline.eraseRenderer = root.eraseRenderer;
-                if (outline.enabled != root.enabled)
-                    outline.enabled = root.enabled;
+                Outline[] outlines = child.GetComponentsInChildren<Outline>(true);
+                for (int o = 0; o < outlines.Length; o++)
+                {
+                    Outline outline = outlines[o];
+                    if (outline == null)
+                        continue;
+                    outline.color = root.color;
+                    outline.eraseRenderer = root.eraseRenderer;
+                    if (outline.enabled != root.enabled)
+                        outline.enabled = root.enabled;
+                }
             }
 
             // The item's own mesh is hidden behind the copies. Its outline would still draw
@@ -1715,16 +2246,12 @@ namespace Dizzy.FirewoodBundle
 
             float minA = float.MaxValue;
             float maxA = float.MinValue;
-            float minLong = float.MaxValue;
-            float maxLong = float.MinValue;
             for (int i = 0; i < centers.Count; i++)
             {
                 if (centers[i][upAxis] < topRow - 0.0001f)
                     continue;
                 minA = Mathf.Min(minA, centers[i][axisA]);
                 maxA = Mathf.Max(maxA, centers[i][axisA]);
-                minLong = Mathf.Min(minLong, centers[i][longAxis]);
-                maxLong = Mathf.Max(maxLong, centers[i][longAxis]);
             }
 
             float cord = Mathf.Clamp(cross * 0.07f, 0.004f, 0.009f);
@@ -1734,9 +2261,12 @@ namespace Dizzy.FirewoodBundle
             up[upAxis] = 1f;
             Vector3 along = Vector3.zero;
             along[longAxis] = 1f;
+            // Piece positions are the mesh origin. A log's origin is its middle, so that
+            // is where the cord sits. A pole's origin is one end, and the cord sits at
+            // the middle of the mesh. The knot belongs on the cord.
             Vector3 origin = Vector3.zero;
             origin[axisA] = (minA + maxA) * 0.5f;
-            origin[longAxis] = (minLong + maxLong) * 0.5f;
+            origin[longAxis] = BundleBounds(centers, logMesh).center[longAxis];
             origin[upAxis] = topRow + logMesh.bounds.max[upAxis] - (stackUp >= 0 ? StackTopDrop(logMesh, upAxis) : 0f);
             var left = new List<Vector3> { origin, origin - along * spread + up * rise };
             var right = new List<Vector3> { origin, origin + along * spread + up * rise };
@@ -2417,7 +2947,9 @@ namespace Dizzy.FirewoodBundle
         private static void ApplyMass(ShipItem item, int count)
         {
             ShipItem prefab = FirewoodPieces.PrefabOf(item);
-            float baseMass = prefab != null ? prefab.mass : item.mass;
+            float baseMass = FirewoodPieces.KindOf(item) == BundleKind.WoodPole
+                ? BundleColliderMath.PoleMass(item.health)
+                : prefab != null ? prefab.mass : item.mass;
             if (baseMass <= 0f)
                 baseMass = 1f;
             item.mass = baseMass * count;

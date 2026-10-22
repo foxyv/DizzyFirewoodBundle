@@ -53,6 +53,34 @@ namespace Dizzy.FirewoodBundle
             0.97f,
             true);
 
+        // A loose wood pole from DogEggz Tent and Plank. Same-length poles tie like
+        // firewood. Their shop bundle of four stays their own item.
+        internal static readonly BundleKind WoodPole = new BundleKind(
+            "wood pole bundle",
+            "wood poles",
+            "Pole",
+            "Bundle",
+            "Cord",
+            Prepend(NaturalName, DefaultDyeNames),
+            Prepend(NaturalCord, DefaultDyes),
+            TieStyle.Cord,
+            1f,
+            true);
+
+        // Loose round shot from Dangerous Waters. Each calibre stacks only with itself,
+        // in a pyramid, with no cord.
+        internal static readonly BundleKind RoundShot = new BundleKind(
+            "round shot bundle",
+            "round shot",
+            "Round Shot",
+            "Bundle",
+            "",
+            new string[0],
+            new Color[0],
+            TieStyle.None,
+            1f,
+            true);
+
         internal static readonly BundleKind Candle = new BundleKind(
             "candle bundle",
             "candles",
@@ -211,6 +239,33 @@ namespace Dizzy.FirewoodBundle
             1f,
             false);
 
+        // A pork chop. Dried or smoked chops stack in a meat bag. The name is "pork",
+        // and a sail shares the prefab number, so the food type is what picks it out.
+        internal static readonly BundleKind Pork = new BundleKind(
+            "pork bag",
+            "pork chops",
+            "Meat",
+            "Bag",
+            "Net",
+            BagOrder(DefaultDyeNames),
+            BagOrder(DefaultDyes),
+            TieStyle.None,
+            MeatBagLayout.PitchShare,
+            false);
+
+        // A lamb chop. The stored name is "lamb", not "lamb chop". It does not mix with pork.
+        internal static readonly BundleKind Lamb = new BundleKind(
+            "lamb bag",
+            "lamb chops",
+            "Meat",
+            "Bag",
+            "Net",
+            BagOrder(DefaultDyeNames),
+            BagOrder(DefaultDyes),
+            TieStyle.None,
+            MeatBagLayout.PitchShare,
+            false);
+
         // A date skewer: the game's date is a stick with three dates on it. Dried
         // skewers hang from a rack, which two of them make in hand or one starts on a hook.
         internal static readonly BundleKind Date = new BundleKind(
@@ -294,6 +349,10 @@ namespace Dizzy.FirewoodBundle
             {
                 if (this == Firewood)
                     return FirewoodBundleConfig.IsEnabled;
+                if (this == WoodPole)
+                    return FirewoodBundleConfig.PolesAreEnabled && TentPoles.Loaded;
+                if (this == RoundShot)
+                    return FirewoodBundleConfig.ShotAreEnabled && Munitions.Loaded;
                 if (this == Candle)
                     return FirewoodBundleConfig.CandlesAreEnabled;
                 if (this == HangingSausage)
@@ -310,6 +369,8 @@ namespace Dizzy.FirewoodBundle
                     return FirewoodBundleConfig.CheeseIsEnabled;
                 if (this == GoatCheese || this == GoatCheeseBag)
                     return FirewoodBundleConfig.GoatCheeseIsEnabled;
+                if (this == Pork || this == Lamb)
+                    return FirewoodBundleConfig.MeatIsEnabled;
                 return FirewoodBundleConfig.SausagesAreEnabled;
             }
         }
@@ -319,6 +380,10 @@ namespace Dizzy.FirewoodBundle
         {
             get
             {
+                if (this == WoodPole)
+                    return Mathf.Clamp(FirewoodBundleConfig.PoleLimit, 2, FirewoodPieces.MaxCount);
+                if (this == RoundShot)
+                    return Mathf.Clamp(FirewoodBundleConfig.ShotLimit, 2, FirewoodPieces.MaxCount);
                 int limit = this == Firewood
                     ? FirewoodBundleConfig.PieceLimit
                     : this == Candle
@@ -335,7 +400,11 @@ namespace Dizzy.FirewoodBundle
                                             ? FirewoodBundleConfig.DateLimit
                                             : this == Cheese
                                                 ? FirewoodBundleConfig.CheeseLimit
-                                                : this == GoatCheese || this == GoatCheeseBag ? FirewoodBundleConfig.GoatCheeseLimit : FirewoodBundleConfig.SausageLimit;
+                                                : this == GoatCheese || this == GoatCheeseBag
+                                                    ? FirewoodBundleConfig.GoatCheeseLimit
+                                                    : this == Pork || this == Lamb
+                                                        ? FirewoodBundleConfig.MeatLimit
+                                                        : FirewoodBundleConfig.SausageLimit;
                 return Mathf.Clamp(limit, 2, FirewoodPieces.MaxCount);
             }
         }
@@ -349,7 +418,7 @@ namespace Dizzy.FirewoodBundle
         // Food whose count lives in a StackState rather than in amount.
         internal bool IsFood
         {
-            get { return this == Sausage || this == HangingSausage || this == Banana || this == HangingBanana || this == Apple || this == AppleBag || this == Orange || this == OrangeBag || this == Date || this == HangingDate || this == Cheese || this == GoatCheese || this == GoatCheeseBag; }
+            get { return this == Sausage || this == HangingSausage || this == Banana || this == HangingBanana || this == Apple || this == AppleBag || this == Orange || this == OrangeBag || this == Date || this == HangingDate || this == Cheese || this == GoatCheese || this == GoatCheeseBag || this == Pork || this == Lamb; }
         }
 
         // The loose piece a hanging kind is made of, and the other way round.
@@ -369,11 +438,17 @@ namespace Dizzy.FirewoodBundle
             get { return this == AppleBag || this == OrangeBag || this == GoatCheeseBag; }
         }
 
-        // Food that two loose pieces make into a stack in hand: a sausage stack, or a
-        // wheel of cheese.
+        // Food that two loose pieces make into a stack in hand: a sausage stack, a
+        // wheel of cheese, or a bag of chops.
         internal bool Stacks
         {
-            get { return this == Sausage || this == Cheese; }
+            get { return this == Sausage || this == Cheese || this == Pork || this == Lamb; }
+        }
+
+        // Round shot from Dangerous Waters.
+        internal bool IsMunition
+        {
+            get { return this == RoundShot; }
         }
 
         // Loose pieces that only ever gather into their hanging kind: bananas into a
@@ -418,7 +493,7 @@ namespace Dizzy.FirewoodBundle
         // The kinds whose tie or net takes a color.
         internal static BundleKind[] Dyed
         {
-            get { return new[] { Firewood, Candle, AppleBag, OrangeBag, GoatCheeseBag }; }
+            get { return new[] { Firewood, WoodPole, Candle, AppleBag, OrangeBag, GoatCheeseBag, Pork, Lamb }; }
         }
 
         // Swaps in the tie colors from the config.
@@ -431,10 +506,13 @@ namespace Dizzy.FirewoodBundle
             Firewood.ColorNames = Prepend(NaturalName, names);
             Firewood.Colors = Prepend(NaturalCord, colors);
             Firewood.ColorUsed = Prepend(true, used);
+            WoodPole.ColorNames = Prepend(NaturalName, names);
+            WoodPole.Colors = Prepend(NaturalCord, colors);
+            WoodPole.ColorUsed = Prepend(true, used);
             Candle.ColorNames = names;
             Candle.Colors = colors;
             Candle.ColorUsed = used;
-            BundleKind[] bags = { AppleBag, OrangeBag, GoatCheeseBag };
+            BundleKind[] bags = { AppleBag, OrangeBag, GoatCheeseBag, Pork, Lamb };
             for (int i = 0; i < bags.Length; i++)
             {
                 bags[i].ColorNames = BagOrder(names);
@@ -467,7 +545,7 @@ namespace Dizzy.FirewoodBundle
 
         internal static bool AnyEnabled
         {
-            get { return Firewood.IsEnabled || Candle.IsEnabled || Sausage.IsEnabled || HangingSausage.IsEnabled || Banana.IsEnabled || Apple.IsEnabled || Orange.IsEnabled || Date.IsEnabled || Cheese.IsEnabled || GoatCheese.IsEnabled; }
+            get { return Firewood.IsEnabled || WoodPole.IsEnabled || RoundShot.IsEnabled || Candle.IsEnabled || Sausage.IsEnabled || HangingSausage.IsEnabled || Banana.IsEnabled || Apple.IsEnabled || Orange.IsEnabled || Date.IsEnabled || Cheese.IsEnabled || GoatCheese.IsEnabled || Pork.IsEnabled; }
         }
 
         private static int PrefabIndex(ShipItem ship)
@@ -499,9 +577,18 @@ namespace Dizzy.FirewoodBundle
                 return Cheese;
             if (ship is ShipItemFood && ship.name == SausageStacks.GoatCheeseName)
                 return SausageStacks.IsHanging(ship) ? GoatCheeseBag : GoatCheese;
+            if (ship is ShipItemFood && ship.name == MeatStacks.PorkName)
+                return Pork;
+            if (ship is ShipItemFood && ship.name == MeatStacks.LambName)
+                return Lamb;
             // The date's item name is not "date", so it is known by its prefab number.
             if (ship is ShipItemFood && (ship.name == SausageStacks.DateName || PrefabIndex(ship) == SausageStacks.DatePrefab))
                 return SausageStacks.IsHanging(ship) ? HangingDate : Date;
+            if (TentPoles.IsPole(ship))
+                return WoodPole;
+            BundleKind munition = Munitions.KindOf(ship);
+            if (munition != null)
+                return munition;
             return null;
         }
     }

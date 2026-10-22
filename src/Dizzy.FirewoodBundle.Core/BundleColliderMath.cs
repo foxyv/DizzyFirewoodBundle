@@ -560,6 +560,42 @@ namespace Dizzy.FirewoodBundle
             return itemLayer;
         }
 
+        // DogEggz Tent and Plank stores a wood pole's length in health, stepped by 0.1 m
+        // from 0.2 m to 8 m. Two poles bundle only when that step is the same.
+        public const float PoleMinMetres = 0.2f;
+        public const float PoleMaxMetres = 8f;
+        public const float PoleKgPerMetre = 2f;
+        // A tied bundle is a short armful. Poles longer than this are cut down as they join.
+        public const float PoleBundleMetres = 1f;
+
+        public static int PoleTenths(float metres)
+        {
+            if (float.IsNaN(metres) || float.IsInfinity(metres))
+                return 20;
+            double clamped = metres < PoleMinMetres ? PoleMinMetres : (metres > PoleMaxMetres ? PoleMaxMetres : metres);
+            return (int)Math.Round(clamped * 10.0);
+        }
+
+        public static float PoleLength(float metres)
+        {
+            return PoleTenths(metres) / 10f;
+        }
+
+        public static bool SamePoleLength(float a, float b)
+        {
+            return PoleTenths(a) == PoleTenths(b);
+        }
+
+        public static float PoleMass(float metres)
+        {
+            return PoleLength(metres) * PoleKgPerMetre;
+        }
+
+        public static string PoleLengthText(float metres)
+        {
+            return PoleLength(metres).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " m";
+        }
+
         public static ColliderBounds BagCoreBounds(
             float plusX,
             float plusZ,
