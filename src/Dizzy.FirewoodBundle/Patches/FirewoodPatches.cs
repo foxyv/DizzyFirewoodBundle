@@ -860,6 +860,18 @@ namespace Dizzy.FirewoodBundle
         }
     }
 
+    // Putting a candle in a lantern ends in RequestCandle, which destroys the item. For a bundle
+    // that is every candle in it. Anything that loads a lantern without going through a click,
+    // such as a crewman, would use the whole bundle up for one lantern.
+    [HarmonyPatch(typeof(ShipItemLanternFuel), nameof(ShipItemLanternFuel.RequestCandle))]
+    internal static class CandleFuelPatch
+    {
+        private static bool Prefix(ShipItemLanternFuel __instance)
+        {
+            return !FirewoodPieces.TakeCandle(__instance);
+        }
+    }
+
     [HarmonyPatch(typeof(ShipItem), nameof(ShipItem.OnItemClick))]
     internal static class FirewoodPlacePatch
     {

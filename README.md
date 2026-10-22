@@ -106,6 +106,12 @@ A [Sailwind](https://store.steampowered.com/app/1764530/Sailwind/) mod for [BepI
 - Press **G** on a loose hook in an open crate to string the crate's loose hooks.
 - With the Better Fishing mod installed, its lures string onto lines the same way. Hooks and each kind of lure keep to their own lines.
 
+### Crew
+- With the Crew mod (once Virtual Crew), a crewman filling a lantern from a candle bundle uses one candle. The rest stay in the bundle.
+- The steward takes one piece off a food bundle, carries that to you and feeds you. A bundle hanging on a hook is left alone.
+- A bundle in your own hands still can't be eaten.
+- Other mods can ask Bundle Up for a piece the same way: `BundleApi.IsFoodBundle` and `BundleApi.TakeOneFood` in `Dizzy.FirewoodBundle.dll`.
+
 ### Topping up
 - Right-clicking a nearly full bundle, stack or line with one in your hands moves just enough over to fill it. The rest stay in your hands.
 

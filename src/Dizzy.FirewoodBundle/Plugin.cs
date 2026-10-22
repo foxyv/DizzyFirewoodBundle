@@ -9,6 +9,7 @@ namespace Dizzy.FirewoodBundle
     [BepInDependency(HookLinePieces.BetterFishingGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(TentPoles.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(Munitions.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency(VirtualCrew.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInProcess("Sailwind.exe")]
     public class Plugin : BaseUnityPlugin
     {
@@ -76,6 +77,19 @@ namespace Dizzy.FirewoodBundle
                 + ", Hook Flare=" + FirewoodBundleConfig.HookFlareAmount.Value
                 + ", Spacing=" + FirewoodBundleConfig.HookSpacingAmount.Value
                 + ", Line Length=" + FirewoodBundleConfig.HookLineLengthAmount.Value + ").");
+        }
+
+        // Every plugin has loaded by now, so the crew mod can be found whatever it is called.
+        private void Start()
+        {
+            try
+            {
+                VirtualCrew.Patch(_harmony);
+            }
+            catch (System.Exception ex)
+            {
+                Log.LogWarning("Could not link to the crew mod: " + ex.Message);
+            }
         }
 
         private void LateUpdate()

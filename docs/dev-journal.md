@@ -299,3 +299,34 @@ Status is one of:
 **Fix.** The cord rises `MeatBagLayout.HookReach`, 2 cm, above the pin: past the top of the peg, which is 1.55 cm. A test keeps it between the peg's top and what the lanterns reach.
 
 **Second try (the first did not fix it in the game).** The stand was never what decided the height. When a held item is aimed at a table, the game puts its origin `furniturePlaceHeight` above the surface (`GoPointer.LateUpdate`, 0.15 m unless set). A meat bag hangs down from its origin, up to half a metre, so everything below the top chop went through the table. The builder now sets `furniturePlaceHeight` to the distance from the origin down to the foot, plus 1 cm (`MeatBagLayout.PlaceHeight`), and a single chop gets the prefab's value back.
+
+## J-023: A crewman uses up a whole candle bundle for one lantern
+
+- **Date:** 2026-10-22
+- **Version:** —
+- **Status:** Untested
+
+**Problem.** With the Virtual Crew mod, a crewman refilling a lantern could use every candle in a bundle.
+
+**Cause.** The crewman picks any candle on the boat (`CrewLanternService.FindFuelFor`) and loads it with the game's own `ShipItemLight.LoadFuel`, which ends in `ShipItemLanternFuel.RequestCandle`. That destroys the item. A candle bundle is one item, so all its candles went. Bundle Up only handled a bundle clicked onto a lantern by a player (`CandleLanternPatch`), and the crew mod doesn't click.
+
+**Fix.** `RequestCandle` is patched (`CandleFuelPatch`). For a candle bundle it takes one candle off the bundle and skips the destroy, for whoever calls it. A single candle is used up as before. The click path shares the same code (`FirewoodPieces.TakeCandle`). There is no unit test: it is in the code that talks to Unity.
+
+## J-024: The crew's steward fetches a food bundle again and again
+
+- **Date:** 2026-10-22
+- **Version:** —
+- **Status:** Untested
+- **Report:** Exocet, on Discord, about the Crew mod (Virtual Crew 0.2.3 is the version on this PC)
+
+**Problem.** "The steward will bring the bundle over to the player to feed them. But since the crew member doesn't know how to remove an item they just get stuck in a loop constantly trying to bring food." The report says the steward already leaves bundles on a hook alone.
+
+**Cause.** The steward picks the best `ShipItemFood` on the boat, carries it to the player and calls `EatFood`. A food bundle is one `ShipItemFood`, and `SausageEatPatch` refused to eat a bundle as a whole. The call did nothing, the request finished, and the steward chose the same bundle next. That also meant a boat with only bundled food never fed anyone.
+
+**Fix.**
+
+- `SausageEatPatch` now tells a bundle in the player's hand (still refused) from one that is not in a hand. The latter gives up one piece (`FirewoodPieces.TryServeOne`): a single is split off with the bundle's food state and eaten, and the bundle drops by one. This is in the game's own method, so it works whatever the crew mod is called.
+- Where the crew mod's methods are found, the steward takes the piece off at the pile, before it picks its food up (`StewardFoodRequest.PickUpFoodAndGoToPlayer`), and carries only that. The bundle stays put. This was asked for: crew should know how to remove items from bundles. For the older Virtual Crew, which also took bundles off a hook, `IsStewardFoodSource` is patched to refuse a hung bundle. The crew mod is found by a plugin with "crew" in its name that has the method, once all plugins have loaded (`Plugin.Start`).
+- `BundleApi` (`IsFoodBundle`, `TakeOneFood`) lets any mod do the same by reflection. The crew mod's author could call it directly.
+
+There is no unit test: it is in the code that talks to Unity.
