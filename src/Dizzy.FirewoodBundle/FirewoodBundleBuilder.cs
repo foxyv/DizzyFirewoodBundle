@@ -102,6 +102,7 @@ namespace Dizzy.FirewoodBundle
             {
                 item.mass = prefab.mass > 0f ? prefab.mass : item.mass;
                 item.holdDistance = prefab.holdDistance;
+                item.furniturePlaceHeight = prefab.furniturePlaceHeight;
                 item.lookText = prefab.lookText;
                 item.description = prefab.description;
                 item.big = prefab.big;
@@ -160,7 +161,7 @@ namespace Dizzy.FirewoodBundle
             if (item == null)
                 return;
             BundleKind kind = FirewoodPieces.KindOf(item);
-            bool hanging = kind != null && kind.Hangs;
+            bool hanging = (kind != null && kind.Hangs) || (MeatStacks.IsMeat(item) && HookLinePieces.IsHanging(item));
             if (!hanging && FirewoodPieces.CountOf(item) <= 1)
                 return;
 
@@ -1427,7 +1428,23 @@ namespace Dizzy.FirewoodBundle
         {
             if (points == null || points.Count < 2)
                 return null;
-            Mesh mesh = NetStrandMesh(points, width > 0f ? width : NetWidth);
+            return CreateCordObject(item, material, NetStrandMesh(points, width > 0f ? width : NetWidth));
+        }
+
+        // Several strands as one object.
+        private static Renderer CreateCordLines(ShipItem item, Material material, List<List<Vector3>> strands, float width)
+        {
+            Mesh joined = null;
+            for (int i = 0; i < strands.Count; i++)
+            {
+                if (strands[i] != null && strands[i].Count >= 2)
+                    joined = JoinCords(joined, NetStrandMesh(strands[i], width));
+            }
+            return CreateCordObject(item, material, joined);
+        }
+
+        private static Renderer CreateCordObject(ShipItem item, Material material, Mesh mesh)
+        {
             if (mesh == null)
                 return null;
             var piece = new GameObject(StringName);
@@ -1864,13 +1881,13 @@ namespace Dizzy.FirewoodBundle
             Material[] materials = source.sharedMaterials;
             // The top of the tube sits just under the origin, so the bag hangs down from a hook.
             float pitch;
-            MeatBagLayout.Slot(1, thickness, out pitch);
+            MeatBagLayout.Slot(1, thickness, FirewoodBundleConfig.MeatSpacing, out pitch);
             float meshHigh = mesh.bounds.max.y - mesh.bounds.center.y;
             float shift = -((count - 1) * pitch + meshHigh + MeatNeck);
             for (int i = 0; i < count; i++)
             {
                 float y;
-                MeatBagLayout.Slot(i, thickness, out y);
+                MeatBagLayout.Slot(i, thickness, FirewoodBundleConfig.MeatSpacing, out y);
                 Vector3 position = new Vector3(0f, y + shift, 0f) - mesh.bounds.center;
                 centers.Add(position);
                 turns.Add(turn);
@@ -1887,7 +1904,12 @@ namespace Dizzy.FirewoodBundle
             if (prefab != null)
                 item.holdDistance = prefab.holdDistance;
 
-            FitMeatBoxes(item, centers, turns, mesh.bounds);
+            // The bag rests on the underside of its bottom ring, not on the bottom chop.
+            float low = mesh.bounds.min.y - mesh.bounds.center.y + shift;
+            float footY = MeatBagLayout.FootY(low, FirewoodBundleConfig.MeatNetBottomHeight, MeatCord * 1.5f);
+            // Set on a table, the origin goes this far above it, so the foot is what touches.
+            item.furniturePlaceHeight = MeatBagLayout.PlaceHeight(footY);
+            FitMeatBoxes(item, centers, turns, mesh.bounds, footY);
             float hanger = shift + (count - 1) * pitch + meshHigh + MeatBagLayout.CapDepth;
             if (hanger < -0.01f)
             {
@@ -1900,7 +1922,7 @@ namespace Dizzy.FirewoodBundle
         }
 
         // One box per chop, a little inside the mesh, plus a short stand under the bottom one.
-        private static void FitMeatBoxes(ShipItem item, List<Vector3> centers, List<Quaternion> turns, Bounds stick)
+        private static void FitMeatBoxes(ShipItem item, List<Vector3> centers, List<Quaternion> turns, Bounds stick, float footY)
         {
             ClearHull(item);
             Vector3 size = stick.size * MeatBagLayout.BoxFit;
@@ -1922,6 +1944,9 @@ namespace Dizzy.FirewoodBundle
                 }
             }
 
+            // The stand reaches down to the foot, so the bag rests on its bottom ring. Without
+            // this point it would stand on the bottom chop and the ring would sink into the table.
+            corners.Add(new ColliderVec3(0f, footY, 0f));
             ColliderBounds stand = BundleColliderMath.PileStand(corners, 1, reach);
             FitBox(
                 item,
@@ -1941,66 +1966,72 @@ namespace Dizzy.FirewoodBundle
                 return;
 
             Vector3 center = mesh.bounds.center;
-            float[] outline = MeatBagLayout.CopyOutline(lamb);
-            if (mesh.isReadable)
-            {
-                for (int i = 0; i < outline.Length; i++)
-                    outline[i] = 0f;
-                Vector3[] vertices = mesh.vertices;
-                for (int i = 0; i < vertices.Length; i++)
-                    MeatBagLayout.Note(outline, vertices[i].x - center.x, vertices[i].z - center.z);
-            }
-            MeatBagLayout.FillGaps(outline);
+            float cord = MeatCord;
+            var path = new MeatNetPath(MeatBagLayout.OutlineOf(lamb), cord, FirewoodBundleConfig.MeatNetGap, FirewoodBundleConfig.MeatNetSpacing, FirewoodBundleConfig.MeatNetEndSize,
+                FirewoodBundleConfig.MeatNetBottomHeight, FirewoodBundleConfig.MeatNetHoopHeight);
 
             float pitch;
-            MeatBagLayout.Slot(1, mesh.bounds.size.y, out pitch);
+            MeatBagLayout.Slot(1, mesh.bounds.size.y, FirewoodBundleConfig.MeatSpacing, out pitch);
             float low = mesh.bounds.min.y - center.y + shift;
             float high = (count - 1) * pitch + (mesh.bounds.max.y - center.y) + shift;
             if (high < low)
                 high = low;
 
-            float cord = MeatCord;
-            float bottom = low - MeatBagLayout.CapDepth;
+            float bottom = low - path.BottomDepth;
             float top = high + MeatBagLayout.CapDepth;
-            const int strands = 14;
-            const int samples = 36;
-            float twist = Mathf.PI * 1.1f;
+            float[] heights = MeatBagLayout.NetHeights(path, bottom, low, high, top);
+            // One piece of cord per family: the strands are joined, so a net is a few
+            // objects and not dozens.
             for (int family = 0; family < 2; family++)
             {
-                float sign = family == 0 ? 1f : -1f;
-                for (int strand = 0; strand < strands; strand++)
+                var strands = new List<List<Vector3>>(path.Strands);
+                for (int strand = 0; strand < path.Strands; strand++)
                 {
-                    var points = new List<Vector3>(samples + 1);
-                    for (int sample = 0; sample <= samples; sample++)
+                    var points = new List<Vector3>(heights.Length);
+                    for (int sample = 0; sample < heights.Length; sample++)
                     {
-                        float t = sample / (float)samples;
-                        float y = Mathf.Lerp(bottom, top, t);
-                        float angle = strand * Mathf.PI * 2f / strands + sign * t * twist;
-                        float radius = MeatBagLayout.NetRadius(outline, angle, y, low, high, cord, FirewoodBundleConfig.MeatNetGap);
-                        points.Add(new Vector3(Mathf.Cos(angle) * radius, y, Mathf.Sin(angle) * radius));
+                        float y = heights[sample];
+                        float px;
+                        float pz;
+                        MeatBagLayout.StrandPoint(path, strand, family, y, bottom, top, low, high, out px, out pz);
+                        points.Add(new Vector3(px, y, pz));
                     }
-                    Renderer line = CreateCordLine(item, material, points, cord);
-                    if (line != null)
-                        renderers.Add(line);
+                    strands.Add(points);
                 }
+                Renderer familyCord = CreateCordLines(item, material, strands, cord);
+                if (familyCord != null)
+                    renderers.Add(familyCord);
             }
 
-            AddMeatHoop(item, material, outline, low, low, high, cord, renderers);
-            AddMeatHoop(item, material, outline, high, low, high, cord, renderers);
-            Renderer loop = CreateCordPiece(item, material, new Vector3(0f, top, 0f), Vector3.zero, 0, cord * 1.5f);
+            AddMeatHoop(item, material, path, MeatBagLayout.HoopY(path, low, high), low, high, cord, renderers);
+            AddMeatHoop(item, material, path, high, low, high, cord, renderers);
+            // The strands end on a ring at the bottom, as the loop at the top ties them there.
+            // It runs straight from one strand's end to the next, and it is a little thicker
+            // than a strand.
+            float[] ring = MeatBagLayout.BottomRing(path, bottom, top, low, high);
+            var corners = new List<Vector3>(ring.Length / 2);
+            for (int i = 0; i < ring.Length; i += 2)
+                corners.Add(new Vector3(ring[i], bottom, ring[i + 1]));
+            Renderer bottomRing = CreateCordLine(item, material, corners, cord * 1.5f);
+            if (bottomRing != null)
+                renderers.Add(bottomRing);
+            // The cord runs up from where the strands meet to the lamp hook's peg.
+            Renderer loop = CreateCordPiece(item, material, new Vector3(0f, top, 0f), new Vector3(0f, MeatBagLayout.HookReach, 0f), 0, cord * 1.5f);
             if (loop != null)
                 renderers.Add(loop);
         }
 
-        private static void AddMeatHoop(ShipItem item, Material material, float[] outline, float y, float low, float high, float cord, List<Renderer> renderers)
+        private static void AddMeatHoop(ShipItem item, Material material, MeatNetPath path, float y, float low, float high, float cord, List<Renderer> renderers)
         {
-            const int steps = 48;
+            // Steps are equal lengths along the net, so a tight bend still gets points.
+            const int steps = MeatBagLayout.HoopSteps;
             var hoop = new List<Vector3>(steps + 1);
             for (int k = 0; k <= steps; k++)
             {
-                float angle = k * Mathf.PI * 2f / steps;
-                float radius = MeatBagLayout.NetRadius(outline, angle, y, low, high, cord, FirewoodBundleConfig.MeatNetGap);
-                hoop.Add(new Vector3(Mathf.Cos(angle) * radius, y, Mathf.Sin(angle) * radius));
+                float px;
+                float pz;
+                MeatBagLayout.HoopPoint(path, k, steps, y, low, high, out px, out pz);
+                hoop.Add(new Vector3(px, y, pz));
             }
             Renderer band = CreateCordLine(item, material, hoop, cord);
             if (band != null)

@@ -27,6 +27,16 @@ namespace Dizzy.FirewoodBundle
             return BundleKind.Of(AsShip(component));
         }
 
+        // A bundle that is hanging from a lamp hook. A meat bag is not a hanging kind, but it
+        // hangs the same way, so the hook has to let go of it when it is lifted.
+        internal static bool IsHungBundle(ShipItem item)
+        {
+            BundleKind kind = KindOf(item);
+            if (kind == null)
+                return false;
+            return kind.Hangs || (MeatStacks.IsMeat(item) && HookLinePieces.IsHanging(item));
+        }
+
         internal static bool IsFirewood(Component component)
         {
             return KindOf(component) == BundleKind.Firewood;

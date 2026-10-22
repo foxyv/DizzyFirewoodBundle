@@ -44,6 +44,11 @@ namespace Dizzy.FirewoodBundle
         internal static ConfigEntry<int> MaxMeat;
         internal static ConfigEntry<float> MeatNetThicknessAmount;
         internal static ConfigEntry<float> MeatNetGapAmount;
+        internal static ConfigEntry<float> MeatSpacingAmount;
+        internal static ConfigEntry<float> MeatNetSpacingAmount;
+        internal static ConfigEntry<float> MeatNetEndSizeAmount;
+        internal static ConfigEntry<float> MeatNetBottomHeightAmount;
+        internal static ConfigEntry<float> MeatNetHoopHeightAmount;
         internal static ConfigEntry<bool> OrangesEnabled;
         internal static ConfigEntry<int> MaxOranges;
         internal static ConfigEntry<int> OrangeLayerSizeAmount;
@@ -265,6 +270,35 @@ namespace Dizzy.FirewoodBundle
         internal static float MeatNetGap
         {
             get { return (MeatNetGapAmount != null ? MeatNetGapAmount.Value : 0.4f) * 0.01f; }
+        }
+
+        // A percentage in the config, a share here.
+        internal static float MeatSpacing
+        {
+            get { return (MeatSpacingAmount != null ? MeatSpacingAmount.Value : MeatBagLayout.PitchShare * 100f) * 0.01f; }
+        }
+
+        // Centimetres in the config, metres here.
+        internal static float MeatNetSpacing
+        {
+            get { return (MeatNetSpacingAmount != null ? MeatNetSpacingAmount.Value : MeatBagLayout.DefaultSpacing * 100f) * 0.01f; }
+        }
+
+        // Centimetres in the config, metres here.
+        internal static float MeatNetEndSize
+        {
+            get { return (MeatNetEndSizeAmount != null ? MeatNetEndSizeAmount.Value : MeatBagLayout.DefaultBottomEnd * 100f) * 0.01f; }
+        }
+
+        // Centimetres in the config, metres here.
+        internal static float MeatNetBottomHeight
+        {
+            get { return (MeatNetBottomHeightAmount != null ? MeatNetBottomHeightAmount.Value : MeatBagLayout.DefaultBottomDepth * 100f) * 0.01f; }
+        }
+
+        internal static float MeatNetHoopHeight
+        {
+            get { return (MeatNetHoopHeightAmount != null ? MeatNetHoopHeightAmount.Value : MeatBagLayout.DefaultHoopHeight * 100f) * 0.01f; }
         }
 
         internal static bool OrangesAreEnabled
@@ -689,6 +723,46 @@ namespace Dizzy.FirewoodBundle
                 new ConfigDescription(
                     "How far the net stands off the meat, in centimetres. 0.4 sits just outside. Smaller is tighter, and below zero the net tucks into the meat. The bag picks up the change when it changes.",
                     new AcceptableValueRange<float>(-2f, 4f)));
+
+            MeatSpacingAmount = config.Bind(
+                "Meat",
+                "Meat Spacing",
+                MeatBagLayout.PitchShare * 100f,
+                new ConfigDescription(
+                    "How far apart the chops in a bag are, as a percentage of one chop's thickness. 100 stacks them flush. Lower presses them into each other, which closes the gaps between them. Higher spreads them. The bag picks up the change when it changes.",
+                    new AcceptableValueRange<float>(50f, 150f)));
+
+            MeatNetSpacingAmount = config.Bind(
+                "Meat",
+                "Net Spacing",
+                MeatBagLayout.DefaultSpacing * 100f,
+                new ConfigDescription(
+                    "How far apart the net's strings are, in centimetres, measured round the bag. Bigger gives a more open net with fewer strings. Net Gap is a different setting: it sets how far the net stands off the meat. The bag picks up the change when it changes.",
+                    new AcceptableValueRange<float>(2.5f, 15f)));
+
+            MeatNetEndSizeAmount = config.Bind(
+                "Meat",
+                "Net End Size",
+                MeatBagLayout.DefaultBottomEnd * 100f,
+                new ConfigDescription(
+                    "The radius, in centimetres, of the circle the strings gather into at the bottom of the bag. Bigger gives a wider, flatter bottom. The bag picks up the change when it changes.",
+                    new AcceptableValueRange<float>(0.5f, 6f)));
+
+            MeatNetBottomHeightAmount = config.Bind(
+                "Meat",
+                "Net Bottom Height",
+                MeatBagLayout.DefaultBottomDepth * 100f,
+                new ConfigDescription(
+                    "How far below the meat the ring at the bottom of the net hangs, in centimetres. Smaller sits closer to the meat. The bag picks up the change when it changes.",
+                    new AcceptableValueRange<float>(0.2f, 4f)));
+
+            MeatNetHoopHeightAmount = config.Bind(
+                "Meat",
+                "Net Hoop Height",
+                MeatBagLayout.DefaultHoopHeight * 100f,
+                new ConfigDescription(
+                    "How far up from the bottom of the meat the hoop round the bag sits, in centimetres. 0 puts it level with the bottom. The bag picks up the change when it changes.",
+                    new AcceptableValueRange<float>(0f, 12f)));
 
             OrangeLayerSizeAmount = config.Bind(
                 "Orange Bags",

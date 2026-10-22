@@ -893,7 +893,7 @@ namespace Dizzy.FirewoodBundle
             if (FirewoodPieces.KindOf(__instance) == BundleKind.WoodPole && FirewoodPieces.CountOf(__instance) > 1)
                 TentPoles.SetBundled(__instance, true);
             // Lifting a hanging bundle takes it off its hook, ready to hang somewhere else.
-            if (FirewoodPieces.KindOf(__instance) != null && FirewoodPieces.KindOf(__instance).Hangs)
+            if (FirewoodPieces.IsHungBundle(__instance))
             {
                 HangableItem hang = __instance.GetComponent<HangableItem>();
                 if (hang != null && hang.IsHanging())
@@ -1099,7 +1099,7 @@ namespace Dizzy.FirewoodBundle
                 return;
             }
 
-            if ((count > 1 || (FirewoodPieces.KindOf(item) != null && FirewoodPieces.KindOf(item).Hangs)) && held == null)
+            if ((count > 1 || FirewoodPieces.IsHungBundle(item)) && held == null)
             {
                 string remove = "Remove " + FirewoodPieces.KindOf(item).Single;
                 ___controlsText.text = item.nailed ? "\n" + remove : "pick up\n" + remove;

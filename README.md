@@ -163,6 +163,11 @@ Settings are in `BepInEx\config\com.dizzy.sailwind.firewoodbundle.cfg`. The file
 | Meat | Enabled | true | Turns pork and lamb bags on or off. |
 | Meat | MaxMeat | 8 | Most chops in one bag, up to 999. Pork and lamb do not share a bag. |
 | Meat | Net Thickness | 1.5 | How thick the strings of a pork or lamb bag are. |
+| Meat | Meat Spacing | 98 | How far apart the chops in a bag are, as a percentage of one chop's thickness. 100 stacks them flush. Lower presses them into each other, which closes the gaps between them. Higher spreads them. |
+| Meat | Net Spacing | 4.5 | How far apart the net's strings are, in centimetres, measured round the bag. Bigger gives a more open net with fewer strings. |
+| Meat | Net Bottom Height | 0.8 | How far below the meat the ring at the bottom of the net hangs, in centimetres. Smaller sits closer to the meat. |
+| Meat | Net Hoop Height | 0 | How far up from the bottom of the meat the hoop round the bag sits, in centimetres. 0 puts it level with the bottom. |
+| Meat | Net End Size | 2.5 | The radius, in centimetres, of the circle the strings gather into at the bottom of the bag. Bigger gives a wider, flatter bottom. |
 | Meat | Net Gap | 0.4 | How far the net stands off the meat, in centimetres. Smaller is tighter. Below zero tucks the net into the meat. |
 | Dates | Enabled | true | Turns date racks on or off. |
 | Dates | MaxDates | 32 | Most date skewers on one rack, up to 999. |

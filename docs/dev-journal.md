@@ -192,3 +192,110 @@ Status is one of:
 **Cause.** Each ball had its own capsule, and a twin on the physics body. A full pyramid is hundreds of colliders waking up together.
 
 **Fix.** The stack has one convex pyramid collider, a little inside the iron.
+
+## J-015: The meat bag's net is a different shape from the meat and has gaps
+
+- **Date:** 2026-10-21
+- **Version:** 0.15.6
+- **Status:** Untested
+
+**Problem.** A pork or lamb bag's net didn't follow the meat, and was open in places.
+
+**Cause.** Measured against the game's meshes with `scripts/measure_outline.py`:
+
+- The net's size came from a table of 48 distances. It sat 0.7 to 6.6 cm off the pork (2.5 cm on average) and 0.7 to 12.1 cm off the lamb (4.7 cm on average).
+- When the game let the builder read the mesh, it filled the table from the mesh's 32 outline points, which left 33 of 48 slots empty. The net then cut into the meat by up to 9 cm on pork and 15 cm on lamb. The game's own meshes can't be read, so this path was probably never used.
+- The 14 strands in each family were spaced evenly by angle, not by distance round the net. The chop is long and narrow, so the openings were 1.5 to 1.8 times wider at the ends than at the sides.
+
+**Fix.**
+
+- The shape is each chop's exact silhouette (`MeatChopShapes`). The outline table is made from it at 720 slots, and the unreadable-mesh path is gone.
+- `MeatNetPath` measures the net's line round the meat. Strands are placed by distance along it, 26 to a family, so the openings are even. Hoops use the same line.
+- Each family's strands are joined into one object. A net is two cords and two hoops, not 28 strands and two hoops.
+- New tests in `MeatNetFitTests` measure the net against the real meat. They failed before the fix and pass after it.
+
+## J-016: The meat bag's strands miss the hoop round the bottom
+
+- **Date:** 2026-10-21
+- **Version:** 0.15.6
+- **Status:** Untested
+
+**Problem.** The strings of the net didn't meet the thick string round the bottom of the bag, which looked odd.
+
+**Cause.** A strand was drawn as straight lines between 37 even heights, from the bottom of the net to the top. The hoops sit at the edges of the meat, which is not one of those heights, so a strand cut across the corner there. Over each end the net pulls in quickly, so the corner was big: in the tests a drawn strand was up to 55 mm off the net on a bag of 8 chops, and 12 mm on a bag of 2.
+
+**Fix.** `MeatBagLayout.NetHeights` picks the heights. The edges of the meat are always one, and they are close together where the net pulls in over each end and where a strand winds quickly round the meat. Drawn strands are now within 2 mm of the net, and meet the hoops. Hoops have 160 steps, up from 96. `MeatNetFitTests` has the checks.
+
+## J-017: A meat bag with one chop left looks like it has two
+
+- **Date:** 2026-10-21
+- **Version:** 0.15.6
+- **Status:** Untested
+
+**Problem.** Taking a chop off a hanging bag of two left a bag that looked as if it still had two.
+
+**Cause.** `FirewoodBundleBuilder.Apply` skips any bundle with one piece left, unless its kind hangs. A meat bag isn't a hanging kind, so the rebuild was skipped and the old two-chop look stayed while the count said one.
+
+**Fix.** A meat bag hanging from a lamp hook is rebuilt whatever its count, the same as a hanging bunch of sausages. The last chop comes off the hook on the next take, as before. There is no unit test: the rebuild is in the Unity-bound builder.
+
+## J-018: The meat bag has no visible ring at the bottom
+
+- **Date:** 2026-10-21
+- **Version:** 0.15.6
+- **Status:** Untested
+
+**Problem.** After the bottom circle was made bigger, the string that held the net together at the bottom was gone.
+
+**Cause.** The strands used to gather into a circle 1.2 cm across, where they bunched into what looked like a ring of string. With the circle set by `Net End Size` (2.5 cm), the strands end separately on it. Nothing in the code drew a ring there: the only rings were the two hoops at the edges of the meat and the loop at the top.
+
+**Fix.** The builder draws a ring at the bottom, on the circle the strands end on, a little thicker than a strand. `MeatNetFitTests` checks that the ring and the strand ends are on a circle of the set size.
+
+## J-019: A meat bag can't be picked up from a lamp hook
+
+- **Date:** 2026-10-21
+- **Version:** 0.15.6
+- **Status:** Untested
+
+**Problem.** Clicking a meat bag hanging from a lamp hook did nothing: it stayed on the hook.
+
+**Cause.** Lifting a hanging bundle was meant to let the hook go. That check was for bundle kinds that hang. A meat bag hangs, but its kind (pork or lamb) isn't one that does, so the hook was never told to let go. `HangableItem.LateUpdate` puts a hung item back on its hook every frame, so it snapped back.
+
+**Fix.** `FirewoodPieces.IsHungBundle` is true for a hanging kind or a meat bag on a hook. The pick-up patch and the look prompt use it.
+
+## J-020: The strands of a meat bag don't meet at the top
+
+- **Date:** 2026-10-21
+- **Version:** 0.15.6
+- **Status:** Untested
+
+**Problem.** At the top of the bag the strings ended in a ring, short of the cord that runs up to the hook.
+
+**Cause.** Over the top end the net pulled in to a circle 1.2 cm across, not to a point. The cord to the hook starts at the middle of that circle and is about 0.6 cm thick, so 52 strand ends stood around it and none touched it. `MeatNetFitTests` showed it: ends up to 1.2 cm from the cord on bags of 2 and 8 chops.
+
+**Fix.** The top end is a point (`MeatBagLayout.TopEnd`). Every strand ends on the cord. The bottom keeps its ring.
+
+## J-021: A meat bag set on a table sinks into it
+
+- **Date:** 2026-10-21
+- **Version:** 0.15.6
+- **Status:** Untested
+
+**Problem.** A bag put down on a table clipped through it.
+
+**Cause.** The bag rests on a flat stand under the bottom chop (`BundleColliderMath.PileStand`). The net hangs lower than that: the cone below the chop, then the ring at the bottom, which is 0.8 cm below the meat by default (`Net Bottom Height`) and a cord thick besides. The ring sank about 1.4 cm into the table.
+
+**Fix, first try.** `MeatBagLayout.FootY` is the underside of the ring. The builder adds it to the points the stand is worked out from, so the stand is as wide as the chop and reaches down to the ring. The bag rests on its bottom, whatever `Net Bottom Height` is set to. The test checks the stand's width and where it ends.
+
+## J-022: The cord at the top of a meat bag stops short of the hook
+
+- **Date:** 2026-10-21
+- **Version:** 0.15.6
+- **Status:** Untested
+
+**Problem.** The cord running up from the bag didn't reach the place it hangs from.
+
+**Cause.** It ended at the point a hung item is pinned at, the middle of the lamp hook's peg. The peg is thicker than the cord and hides the end. The game's lanterns, which hang from the same peg, rise 2.4 to 3.3 cm above that point with a handle over the top.
+
+**Fix.** The cord rises `MeatBagLayout.HookReach`, 2 cm, above the pin: past the top of the peg, which is 1.55 cm. A test keeps it between the peg's top and what the lanterns reach.
+
+**Second try (the first did not fix it in the game).** The stand was never what decided the height. When a held item is aimed at a table, the game puts its origin `furniturePlaceHeight` above the surface (`GoPointer.LateUpdate`, 0.15 m unless set). A meat bag hangs down from its origin, up to half a metre, so everything below the top chop went through the table. The builder now sets `furniturePlaceHeight` to the distance from the origin down to the foot, plus 1 cm (`MeatBagLayout.PlaceHeight`), and a single chop gets the prefab's value back.
