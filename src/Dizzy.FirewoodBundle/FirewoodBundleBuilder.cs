@@ -80,6 +80,7 @@ namespace Dizzy.FirewoodBundle
         {
             if (item == null)
                 return;
+            CoopBridge.Note(item);
 
             int id = item.GetInstanceID();
             int stamp = 1;
@@ -165,7 +166,12 @@ namespace Dizzy.FirewoodBundle
             if (!hanging && FirewoodPieces.CountOf(item) <= 1)
                 return;
 
+            CoopBridge.Note(item);
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            Stall.Mark("rebuilding " + item.name);
+            Stall.Bundle("rebuilt " + item.name + " (" + FirewoodPieces.CountOf(item) + ")");
             ApplyNow(item);
+            Stall.Report("Rebuilt " + item.name + " (" + FirewoodPieces.CountOf(item) + ")", watch);
             if (Plugin.Instance == null)
                 return;
 
@@ -1846,6 +1852,20 @@ namespace Dizzy.FirewoodBundle
             }
         }
 
+        // True while the item is drawn as a bundle and not as its own single piece.
+        internal static bool IsBuilt(ShipItem item)
+        {
+            if (item == null)
+                return false;
+            for (int i = item.transform.childCount - 1; i >= 0; i--)
+            {
+                string name = item.transform.GetChild(i).name;
+                if (name == StickName || name == StringName || name == KnotName)
+                    return true;
+            }
+            return false;
+        }
+
         private static void ClearSticks(ShipItem item)
         {
             for (int i = item.transform.childCount - 1; i >= 0; i--)
@@ -2083,6 +2103,7 @@ namespace Dizzy.FirewoodBundle
             Material material = StringMaterial(FirewoodPieces.KindOf(item), FirewoodPieces.ColorOf(item));
             if (material == null)
                 return;
+            CoopBridge.Note(item);
 
             Transform transform = item.transform;
             for (int i = 0; i < transform.childCount; i++)
@@ -3542,6 +3563,7 @@ namespace Dizzy.FirewoodBundle
             collider.convex = true;
             collider.sharedMesh = hull;
             collider.isTrigger = rootCollider != null && rootCollider.isTrigger;
+            shape.AddComponent<FollowLayer>();
 
             ItemRigidbody body = item.itemRigidbodyC;
             if (body == null || BodyField == null || BodyField.GetValue(body) == null || SubcollidersField == null)
