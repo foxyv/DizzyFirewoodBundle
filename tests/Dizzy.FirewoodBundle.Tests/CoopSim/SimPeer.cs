@@ -80,11 +80,13 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             _net.Send(this, "Dropped", new SimMessage { Id = item.Id, X = x });
         }
 
-        // Coop sends health with amount when health changes. This is the only time it sends amount.
+        // Coop sends a health packet and then an amount packet when health changes. This is the
+        // only time it sends amount.
         public void ChangeHealth(SimItem item, float health)
         {
             item.Health = health;
-            _net.Send(this, "ItemUpdate", new SimMessage { Items = new List<SimItem> { item.Clone() } });
+            _net.Send(this, "ItemHealth", new SimMessage { Items = new List<SimItem> { item.Clone() } });
+            _net.Send(this, "ItemAmount", new SimMessage { Items = new List<SimItem> { item.Clone() } });
         }
 
         // ---- What Bundle Up does ----
@@ -263,14 +265,23 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                             Items[item.Id] = item.Clone();
                     break;
 
-                case "ItemUpdate":
-                    // Coop sets amount and health, and rebuilds nothing.
+                case "ItemHealth":
+                    // Coop sets health, and rebuilds nothing.
+                    foreach (SimItem sent in message.Items)
+                    {
+                        SimItem here;
+                        if (Items.TryGetValue(sent.Id, out here))
+                            here.Health = sent.Health;
+                    }
+                    break;
+
+                case "ItemAmount":
+                    // Coop sets amount, and rebuilds nothing.
                     foreach (SimItem sent in message.Items)
                     {
                         SimItem here;
                         if (Items.TryGetValue(sent.Id, out here))
                         {
-                            here.Health = sent.Health;
                             here.Amount = sent.Amount;
                             _coopSetCount[here.Id] = here.Count;
                         }
