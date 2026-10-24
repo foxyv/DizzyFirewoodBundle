@@ -438,4 +438,6 @@ Status is one of:
 
 **Why.** The simulator models Coop and the mod's rules, but not the mod's code or the game's objects. Two copies of the game can't run on one PC. This runs the mod's own packet code on a real bundle with no second player. It does not test Coop's own sync or the network.
 
-**Not tried yet.** It has been built and the simulator tests still pass, but it has not been run in the game.
+**Result (2026-10-24).** Run in the game on the Dizzy Oct 2026 pack, single player, 14 runs on 8 kinds of bundle: firewood, candles, cheese, bananas, lamb, pork, dates and apples. All 11 checks passed every time (`ALL PASSED: 11 passed, 0 failed`), with no `FAIL` and no errors, and each bundle was put back as it was. This covers both ways a count is stored (candles in amount, food in a stack code) and the J-025, J-029/J-033 and J-032 rules on real game objects.
+
+**Not tried yet.** Sausage stacks, hook lines, goat cheese, oranges, poles and shot. Hook lines use different code from the others and are the likeliest to differ. The probe does not test Coop's own sync, the host's settle step or the network; only a session with another player does.
