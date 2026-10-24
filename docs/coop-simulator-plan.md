@@ -123,11 +123,20 @@ For each kind (firewood, candles, line, lure line, sausages, cheese, apples and 
 | S3 | S1 with each rule C1 to C8 turned off in turn. | Tells us which tests guard which rule. Any rule no test guards gets a new test. |
 | S4 | Count the messages for 100 actions. | No more than one 249 per rebuild. |
 
+## Layer 2 check (2026-10-23): two copies on one PC will not work
+
+Coop 0.4.0 (`SailwindCoop.dll`) sends everything over Steam P2P (`SteamNetworking.SendP2PPacket`, `AcceptP2PSessionWithUser`) between Steam IDs, joined through a Steam lobby. It has no loopback, offline or fake-peer mode; its `Debug` classes are command and profiling tools. Two copies need two Steam accounts, and one account cannot run the game twice. The Deck does not help either, since it would be the same account.
+
+So the rig as drawn is out. Two ways to still cover what the simulator cannot (Unity rebuilds, colliders, stalls):
+
+- **One-game loopback probe.** A dev-only command in a single running game builds a packet from a real bundle with `BundleWire`, then hands it to `CoopBridge.Receive` as if from another player (it does not check for a session). It checks the apply path against the real rebuild code: count, colors, hanging, food state. It cannot test Coop's own sync.
+- **Session log checker.** A script reads both players' BepInEx logs from a real session with Robby and checks that each `[Coop] Sent` line has a matching `[Coop] Received` on the other side, and lists stalls. It needs no new plugin, and covers Coop's real behaviour, but only when two people play.
+
 ## Open questions
 
 - **C8:** confirm from Coop's code whether a guest's messages to the host can arrive out of order, and whether there is any resend.
 - Is the Coop version in the October pack the one the journal describes? Pin the version in the simulator (`CoopRules.Version`).
-- Layer 2 needs two copies of the game on one PC. Check this before building the probe plugin.
+- Layer 2: see the check above. Pick the probe, the log checker, or both.
 - X1 and X2 have no agreed answer yet. The tests should first record what happens. Pick the rule after that.
 
 ## Findings from steps 3 and 4
@@ -142,4 +151,4 @@ The simulator runs these in `dotnet test` (`tests/Dizzy.FirewoodBundle.Tests/Coo
 - **X1 (fixed, J-025):** two take-offs at once used to leave a piece too many. Packets now carry the count they changed from, and the other side adds the difference.
 - **X2 (fixed, J-026):** a combine racing a pick-up used to give the bundle the other item's ID. The host now ignores a pick-up of a bundle it just combined away.
 - **Still open:** concurrent play still ends in disagreement in about 3 of 20 runs, from other races (for example health and hanging changed at once). A lost message is still never sent again, and since J-025 a later change no longer heals it.
-- **Not yet done:** the 5% loss run for X cases, the Layer 2 rig, and the choice of a rule for X1 and X2.
+- **Not yet done:** the 5% loss run for X cases and Layer 2 (see the check above). X1 and X2 are fixed.
