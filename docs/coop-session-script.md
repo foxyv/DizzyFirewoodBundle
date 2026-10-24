@@ -48,5 +48,5 @@ py -3 scripts/coop_log_check.py host.log guest.log
 
 ## Known limits (not faults)
 
-- Two players picking up the same item at once and dropping it in different places can leave it in two places (J-030).
+- Nothing else is known to end apart, other than a lost packet (below).
 - A lost packet is not sent again. A rare `DIFFERS` after a lag spike may be this.

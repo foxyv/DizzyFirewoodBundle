@@ -104,11 +104,23 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             }
         }
 
+        // From the host to one guest.
+        internal void SendTo(SimPeer from, string to, string type, SimMessage message)
+        {
+            message.From = from.Name;
+            message.Hop = from.Name;
+            message.Type = type;
+            Sent++;
+            if (!Lost(message))
+                _queue.Add(Copy(message, to));
+        }
+
         private static SimMessage Copy(SimMessage m, string to)
         {
             return new SimMessage
             {
                 From = m.From,
+                Holder = m.Holder,
                 Hop = m.Hop,
                 To = to,
                 Type = m.Type,
@@ -151,7 +163,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             }
 
             // The host passes a guest's message on to the other guests.
-            if (to.IsHost && Rules.CoopHostRelays && SyncRules.ShouldRelay(true))
+            if (to.IsHost && Rules.CoopHostRelays && SyncRules.ShouldRelay(true) && message.Type != "PickRequest")
             {
                 foreach (SimPeer other in Peers)
                 {

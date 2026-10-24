@@ -381,7 +381,7 @@ Status is one of:
 
 **Fix.** The mod also remembers every destroy Coop reports, ours (`OnLocalItemDestroyed`) and other players' (`OnRemoteItemDestroyed`), for 30 seconds, and ignores a pick-up of such an ID.
 
-**Not covered.** Two players picking up the same item at once, then dropping it in different places, can end with the item in two places. It needs a rule for who holds it, which Coop does not give.
+**Not a bug.** The hunt also showed an item in two places after two players picked it up at once and dropped it in different spots. That was the simulator: Coop 0.4.0 has the guest ask the host (`ItemPickupRequest`), and the host denies it if anyone holds the item (`ItemPickupDenied`), so only one player holds it. The simulator now does the same, and no random run ends apart.
 
 ## J-031: A health change at the same moment as another change could end with different bundles
 

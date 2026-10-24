@@ -129,9 +129,9 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             Assert.True(apart > 0);
         }
 
-        // J-030: one player used an item up while another picked it up. A third player heard of
-        // the destroy first, then the pick-up of an item that is gone, and gave that ID to the
-        // nearest item of the same prefab. Remembering remote destroys stops that.
+        // J-030: one guest used an item up while another picked it up. The host heard of the
+        // destroy first, then the request to pick up an item that is gone, and gave that ID to
+        // the nearest item of the same prefab. Remembering remote destroys stops that.
         [Fact]
         public void J30_APickUpOfAnItemAnotherPlayerUsedUp_IsIgnoredOnEveryScreen()
         {
@@ -139,10 +139,10 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             {
                 SimNetwork net = Scenario.Start();
                 SimItem gone = net.Host.Create(10, SimKind.Candle, 1, 1);
-                net.Peers[1].Create(10, SimKind.Candle, 3, 1);
+                net.Host.Create(10, SimKind.Candle, 3, 1);
                 net.Settle();
                 net.Peers[2].PickUp(net.Peers[2].Items[gone.Id]);
-                net.Host.Destroy(net.Host.Items[gone.Id]);
+                net.Peers[1].Destroy(net.Peers[1].Items[gone.Id]);
                 net.SettleInterleaved(seed);
                 Assert.True(net.Differences().Count == 0, "seed " + seed + ": " + net.Summary());
             }
@@ -156,15 +156,73 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             {
                 SimNetwork net = Scenario.Start(new SimRules { RememberRemoteDestroys = false });
                 SimItem gone = net.Host.Create(10, SimKind.Candle, 1, 1);
-                net.Peers[1].Create(10, SimKind.Candle, 3, 1);
+                net.Host.Create(10, SimKind.Candle, 3, 1);
                 net.Settle();
                 net.Peers[2].PickUp(net.Peers[2].Items[gone.Id]);
-                net.Host.Destroy(net.Host.Items[gone.Id]);
+                net.Peers[1].Destroy(net.Peers[1].Items[gone.Id]);
                 net.SettleInterleaved(seed);
                 if (net.Differences().Count > 0)
                     apart++;
             }
             Assert.True(apart > 0);
+        }
+
+        // Coop 0.4.0 settles two players picking up one item at once: a guest asks the host,
+        // which denies it if someone holds the item, and the guest is made to drop it. The
+        // simulator once let both hold it, and showed the item in two places after two drops.
+        [Fact]
+        public void TwoPlayersPickUpTheSameItemAtOnce_OneHoldsIt_AndTheItemEndsInOnePlace()
+        {
+            for (int seed = 0; seed < 50; seed++)
+            {
+                SimNetwork net = Scenario.Start();
+                SimItem item = net.Host.Create(10, SimKind.Candle, 1, 3);
+                net.Settle();
+                net.Host.PickUp(item);
+                net.Peers[2].PickUp(net.Peers[2].Items[item.Id]);
+                net.SettleInterleaved(seed);
+
+                Assert.Contains(item.Id, net.Host.HeldByMe);
+                Assert.DoesNotContain(item.Id, net.Peers[2].HeldByMe);
+                Assert.Contains(item.Id, net.Peers[2].RemoteHeld);
+
+                net.Host.Drop(item, 4);
+                net.SettleInterleaved(seed + 1);
+                Assert.True(net.Differences().Count == 0, "seed " + seed + ": " + net.Summary());
+            }
+        }
+
+        [Fact]
+        public void TwoGuestsPickUpTheSameItemAtOnce_TheFirstRequestWins()
+        {
+            for (int seed = 0; seed < 50; seed++)
+            {
+                SimNetwork net = Scenario.Start();
+                SimItem item = net.Host.Create(10, SimKind.Candle, 1, 3);
+                net.Settle();
+                net.Peers[1].PickUp(net.Peers[1].Items[item.Id]);
+                net.Peers[2].PickUp(net.Peers[2].Items[item.Id]);
+                net.SettleInterleaved(seed);
+
+                int holders = net.Peers.Count(p => p.HeldByMe.Contains(item.Id));
+                Assert.True(holders == 1, "seed " + seed + ": " + holders + " hold it");
+            }
+        }
+
+        [Fact]
+        public void WithoutCoopsPickUpCheck_BothHoldItAndDropItInDifferentPlaces()
+        {
+            SimNetwork net = Scenario.Start(new SimRules { CoopArbitratesPickUp = false });
+            SimItem item = net.Host.Create(10, SimKind.Candle, 1, 3);
+            net.Settle();
+            net.Host.PickUp(item);
+            net.Peers[2].PickUp(net.Peers[2].Items[item.Id]);
+            net.Settle();
+            net.Host.Drop(item, 4);
+            net.Peers[2].Drop(net.Peers[2].Items[item.Id], 3);
+            net.Settle();
+
+            Assert.NotEmpty(net.Differences());
         }
 
         // Prints each distinct race. Not an assertion: it is how the races were found.

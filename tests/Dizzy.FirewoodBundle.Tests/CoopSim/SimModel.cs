@@ -112,6 +112,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         public bool CoopTakesNearestOnUnknownId = true; // C6
         public bool HostSettlesHealth = true;         // J-031
         public bool RememberRemoteDestroys = true;    // J-030
+        public bool CoopArbitratesPickUp = true;      // Coop 0.4.0: a guest asks the host, which approves or denies
         public bool HostArbitrates = true;            // J-029
         public bool CoopHostRelays = true;            // C4
 
@@ -127,6 +128,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
     public sealed class SimMessage
     {
         public string From;
+        public string Holder;        // who picked it up, on a PickedUp
         public string Hop;           // who sent it over this link: the host, for a relayed message
         public string To;
         public string Type;

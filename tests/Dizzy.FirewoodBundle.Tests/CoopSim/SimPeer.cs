@@ -13,6 +13,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         private readonly HashSet<SimItem> _changed = new HashSet<SimItem>();
         private readonly Dictionary<int, int> _bases = new Dictionary<int, int>();
         private readonly DestroyedMemory _destroyed = new DestroyedMemory();
+        private readonly Dictionary<int, string> _holders = new Dictionary<int, string>();   // the host's record of who holds what
         private int _nextLocalId;
         private bool _applying;
 
@@ -55,15 +56,21 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             return item;
         }
 
+        // The host takes it at once and tells everyone. A guest takes it in hand and asks the
+        // host, which approves or denies (Coop 0.4.0).
         public void PickUp(SimItem item)
         {
             HeldByMe.Add(item.Id);
-            _net.Send(this, "PickedUp", new SimMessage { Id = item.Id, X = item.X, Items = new List<SimItem> { item.Clone() } });
+            bool ask = !IsHost && Rules.CoopArbitratesPickUp;
+            if (IsHost)
+                _holders[item.Id] = Name;
+            _net.Send(this, ask ? "PickRequest" : "PickedUp", new SimMessage { Id = item.Id, X = item.X, Holder = Name, Items = new List<SimItem> { item.Clone() } });
         }
 
         public void Drop(SimItem item, double x)
         {
             HeldByMe.Remove(item.Id);
+            _holders.Remove(item.Id);
             item.X = x;
             _net.Send(this, "Dropped", new SimMessage { Id = item.Id, X = x });
         }
@@ -262,11 +269,23 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                     break;
 
                 case "PickedUp":
-                    ReceivePickUp(message);
+                    // The host's approval of our own request changes nothing here.
+                    if (message.Holder != Name)
+                        ReceivePickUp(message);
+                    break;
+
+                case "PickRequest":
+                    ReceivePickRequest(message);
+                    break;
+
+                case "Denied":
+                    // Coop makes the guest drop it, without telling anyone.
+                    HeldByMe.Remove(message.Id);
                     break;
 
                 case "Dropped":
                     RemoteHeld.Remove(message.Id);
+                    _holders.Remove(message.Id);
                     SimItem dropped;
                     if (Items.TryGetValue(message.Id, out dropped))
                     {
@@ -319,7 +338,25 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             _net.Send(this, "Bundle", new SimMessage { Body = stream.ToArray() });
         }
 
-        private void ReceivePickUp(SimMessage message)
+        // The host: approve a guest's pick-up unless someone else holds the item.
+        private void ReceivePickRequest(SimMessage message)
+        {
+            string holder;
+            if (_holders.TryGetValue(message.Id, out holder) && holder != message.Holder)
+            {
+                _net.SendTo(this, message.Holder, "Denied", new SimMessage { Id = message.Id });
+                return;
+            }
+            if (!ReceivePickUp(message))
+            {
+                _net.SendTo(this, message.Holder, "Denied", new SimMessage { Id = message.Id });
+                return;
+            }
+            _holders[message.Id] = message.Holder;
+            _net.Send(this, "PickedUp", new SimMessage { Id = message.Id, X = message.X, Holder = message.Holder, Items = message.Items });
+        }
+
+        private bool ReceivePickUp(SimMessage message)
         {
             SimItem item;
             if (!Items.TryGetValue(message.Id, out item))
@@ -328,21 +365,22 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                 // gives it the new ID.
                 SimItem sent = message.Items[0];
                 if (!Rules.CoopTakesNearestOnUnknownId)
-                    return;
+                    return false;
                 if (Rules.IgnorePickUpOfDestroyed && _destroyed.WasDestroyed(message.Id, 0f))
-                    return;
+                    return false;
                 item = Items.Values
                     .Where(i => i.Prefab == sent.Prefab && !RemoteHeld.Contains(i.Id) && !HeldByMe.Contains(i.Id))
                     .OrderBy(i => Math.Abs(i.X - message.X))
                     .ThenBy(i => i.Id)
                     .FirstOrDefault();
                 if (item == null)
-                    return;
+                    return false;
                 Items.Remove(item.Id);
                 item.Id = message.Id;
                 Items[item.Id] = item;
             }
             RemoteHeld.Add(message.Id);
+            return true;
         }
 
         private void ReceiveBundle(SimMessage message)
