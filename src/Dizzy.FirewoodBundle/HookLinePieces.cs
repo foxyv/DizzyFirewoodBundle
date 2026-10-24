@@ -75,11 +75,13 @@ namespace Dizzy.FirewoodBundle
 
         internal static void WriteCount(ShipItem item, int count, bool keepLine)
         {
+            CoopBridge.CountWillChange(item);
             int single = SingleAmount(item);
             if (count <= 1)
                 item.amount = keepLine ? single - 1 : single;
             else
                 item.amount = single + (count - 1);
+            CoopBridge.Note(item);
         }
 
         // A line of one uses an amount a loose hook never has, so it can stay strung.
@@ -124,7 +126,7 @@ namespace Dizzy.FirewoodBundle
                 return false;
             if (!held.sold || !target.sold || target.unclickable)
                 return false;
-            if (target.held != null)
+            if (target.held != null || CoopBridge.HeldByOther(target))
                 return false;
 
             // A hung line can take more hooks. Hanging marks the body as in a stove.
@@ -456,7 +458,7 @@ namespace Dizzy.FirewoodBundle
 
         internal static bool TrySplit(ShipItem line)
         {
-            if (!FirewoodBundleConfig.HooksAreEnabled || line == null || line.held != null || !line.sold)
+            if (!FirewoodBundleConfig.HooksAreEnabled || line == null || line.held != null || !line.sold || CoopBridge.HeldByOther(line))
                 return false;
             int count = CountOf(line);
             if (count <= 1 && !IsLine(line))
@@ -486,6 +488,7 @@ namespace Dizzy.FirewoodBundle
                     saveable.SetParentObject(lineSave.GetParentObject());
                 saveable.RegisterToSave();
             }
+            CoopBridge.Spawned(saveable);
 
             if (count <= 1)
             {
@@ -730,7 +733,8 @@ namespace Dizzy.FirewoodBundle
             if (!IsSingleton(hook))
                 return false;
             ShipItemCrate crate = OpenCrateHolding(hook);
-            return crate != null && LooseHooks(crate, KindOf(hook)) >= 2;
+            // Another player carrying the crate is changing what is in it.
+            return crate != null && !CoopBridge.HeldByOther(crate) && LooseHooks(crate, KindOf(hook)) >= 2;
         }
 
         private static ShipItem LookedAtHook()

@@ -52,8 +52,8 @@ namespace Dizzy.FirewoodBundle
         // Not a stack shape: marks a hanging bundle, which keeps its state even with one
         // sausage left, since it is still tied to its hook.
         internal const int HangWidth = 8;
-        private const int WidthStride = 1000;
-        private const int ColorStride = 10000;
+        private const int WidthStride = StackCode.WidthStride;
+        private const int ColorStride = StackCode.ColorStride;
 
         private static float _notifiedAt = -10f;
 
@@ -421,6 +421,8 @@ namespace Dizzy.FirewoodBundle
                 if (stack == null)
                     stack = pointer.GetPointedAtItem();
                 if (!IsStack(stack) || IsHanging(stack) || FirewoodPieces.KindOf(stack) != BundleKind.Sausage)
+                    continue;
+                if (CoopBridge.HeldByOther(stack))
                     continue;
 
                 StackState state = stack.GetComponent<StackState>();

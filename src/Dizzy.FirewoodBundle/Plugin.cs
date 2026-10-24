@@ -10,6 +10,7 @@ namespace Dizzy.FirewoodBundle
     [BepInDependency(TentPoles.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(Munitions.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(VirtualCrew.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency(CoopBridge.CoopGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInProcess("Sailwind.exe")]
     public class Plugin : BaseUnityPlugin
     {
@@ -27,6 +28,7 @@ namespace Dizzy.FirewoodBundle
             Instance = this;
             Log = Logger;
             FirewoodBundleConfig.Bind(Config);
+            Stall.Start(this);
 
             _harmony = new Harmony(PluginGuid);
             try
@@ -35,6 +37,7 @@ namespace Dizzy.FirewoodBundle
                 FirewoodBigLookPatch.Apply(_harmony);
                 TentPoles.Patch(_harmony);
                 Munitions.Patch(_harmony);
+                CoopBridge.Apply(_harmony);
             }
             catch (System.Exception ex)
             {
@@ -92,14 +95,29 @@ namespace Dizzy.FirewoodBundle
             }
         }
 
+        private void FixedUpdate()
+        {
+            Stall.Mark("before physics (FixedUpdate)");
+        }
+
+        private void Update()
+        {
+            Stall.Mark("Update");
+        }
+
         private void LateUpdate()
         {
+            Stall.Mark("LateUpdate (Bundle Up)");
             FirewoodPieces.ReleaseHeldPiece();
             HookLinePieces.ReleaseHeldHook();
             HookLinePieces.GatherLookedAtHook();
             FirewoodPieces.GatherLookedAtPiece();
             FirewoodPieces.CycleLookedAtColor();
             SausageStacks.CycleLookedAtWidth();
+            CoopBridge.Flush();
+            CoopBridge.ProbeIfAsked();
+            Stall.Frame();
+            Stall.Mark("end of LateUpdate (Bundle Up)");
         }
 
         private void OnDestroy()

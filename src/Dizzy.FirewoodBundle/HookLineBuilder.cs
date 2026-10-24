@@ -21,6 +21,7 @@ namespace Dizzy.FirewoodBundle
 
             StoredShape.Remove(item.GetInstanceID());
             HookLinePieces.WriteCount(item, 1);
+            CoopBridge.Note(item);
             ClearChildren(item);
             ReleaseHang(item);
             Renderer root = item.GetComponent<Renderer>();
@@ -54,6 +55,7 @@ namespace Dizzy.FirewoodBundle
             int count = HookLinePieces.CountOf(item);
             if (item == null || count < 1 || !HookLinePieces.IsLine(item))
                 return;
+            CoopBridge.Note(item);
 
             MeshRenderer source = item.GetComponent<MeshRenderer>();
             MeshFilter filter = item.GetComponent<MeshFilter>();
@@ -477,6 +479,20 @@ namespace Dizzy.FirewoodBundle
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
             return mesh;
+        }
+
+        // True while the item is drawn as a line and not as its own single hook.
+        internal static bool IsBuilt(ShipItem item)
+        {
+            if (item == null)
+                return false;
+            for (int i = item.transform.childCount - 1; i >= 0; i--)
+            {
+                string name = item.transform.GetChild(i).name;
+                if (name == HookName || name == CordName)
+                    return true;
+            }
+            return false;
         }
 
         private static void ClearChildren(ShipItem item)

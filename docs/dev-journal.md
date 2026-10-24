@@ -330,3 +330,156 @@ Status is one of:
 - `BundleApi` (`IsFoodBundle`, `TakeOneFood`) lets any mod do the same by reflection. The crew mod's author could call it directly.
 
 There is no unit test: it is in the code that talks to Unity.
+
+## J-025: Two players taking a piece off one bundle at once make a piece too many
+
+- **Date:** 2026-10-23
+- **Version:** —
+- **Status:** Untested
+- **Found by:** the co-op simulator (`CoopScenarioTests`, X1). Not yet seen in the game.
+
+**Problem.** If two players each take one piece off the same bundle before hearing of the other's change, the bundle ends with one piece fewer than it should. Four candles, two taken off: the bundle showed 3 and the two pieces made 5 in all.
+
+**Cause.** Each bundle packet carried the new state only. Each player sent "3 left" and applied the other's "3 left", so the second take-off was lost.
+
+**Fix.** The packet also carries the count the sender changed from and the count it made (`BundleState.BaseCount`, `Count`; protocol 2). A player whose own count differs from that base changed the bundle meanwhile, so adds the sender's difference to their own count (`CountMerge.Resolve`, never below one). The base is noted the first time a count is written in a frame (`CoopBridge.CountWillChange`). Players on protocol 1 and 2 ignore each other's bundle packets, as for any other version difference.
+
+**Limit.** A lost packet is still never sent again, and a later change no longer corrects the count, because it is now added to it. Before, the next change healed a lost one.
+
+## J-026: A bundle combined while another player picks it up gives its ID to a different bundle
+
+- **Date:** 2026-10-23
+- **Version:** —
+- **Status:** Untested
+- **Found by:** the co-op simulator (X2). Not yet seen in the game.
+
+**Problem.** The host combines bundle B into bundle A while the guest picks B up. The two games then disagree about which item has which ID, and the pieces in A are shown under B's ID.
+
+**Cause.** B is gone when the pick-up reaches the host. For an item it does not know, Coop takes the nearest item of the same prefab and gives it the new ID (as in J-007). That is A.
+
+**Fix.** `FirewoodPieces.Consume`, which destroys a combined bundle, notes its ID (`CoopBridge.Destroyed`). For 30 seconds a pick-up of that ID is ignored (`DestroyedMemory`, checked in the patch on `OnRemoteItemPickedUp`). The guest's copy goes when it hears of the destroy. Only the combine path is covered; other places that destroy an item are not.
+
+## J-027: A way to check two players' logs for bundles that went out of step
+
+- **Date:** 2026-10-23
+- **Version:** —
+- **Status:** Diagnostic
+
+**What.** `scripts/coop_log_check.py` reads the host's and the guest's `LogOutput.log` from one co-op session and reports bundles that were sent and never received, bundles whose last count differs between the two players, bundles sent to a player who does not have them, warnings and errors from Dizzy Bundle Up, and (with `--stall`) stall reports. It lists merges of simultaneous changes and ignored pick-ups as notes. `scripts/test_coop_log_check.py` tests it.
+
+**Log change.** After applying a bundle from another player, the mod now logs `[Coop] Applied <name> <id>: <n> pieces.` The checker compares final counts with it. Both players need this build.
+
+**Why.** Two copies of the game can't be run on one PC (Coop needs a Steam account for each player), so a real session with another player is the only test of Coop's own sync. This makes a session's result readable.
+
+## J-028: You can change the color or width of a bundle another player is holding
+
+- **Date:** 2026-10-23
+- **Version:** —
+- **Status:** Untested
+- **Found by:** `CoopGuardTests`, which reads the source for ways to change a bundle that never ask `HeldByOther`. Not yet seen in the game.
+
+**Problem.** In co-op, pointing at a bundle in the other player's hands and pressing the tie color key or the stack width key changed it. The bundle was rebuilt in their hands, as in J-005.
+
+**Cause.** `CycleLookedAtColor` and `CycleLookedAtWidth` act on the bundle the pointer is held on or looking at. J-005 added the `HeldByOther` check to combine, take from and gather, but not to these two. A third case, `GatherLookedAtHook` (G on loose hooks in an open crate), did not ask whether another player was carrying the crate.
+
+**Fix.** Each checks `CoopBridge.HeldByOther` and does nothing if another player holds the bundle (or the crate). `CoopGuardTests` fails if any other way to change a bundle skips the check; the ways that only touch the player's own hand are listed there with reasons. The simulator has tests that color and width are refused while held and allowed for the holder.
+
+## J-029: Two players changing one bundle at once could end with different bundles
+
+- **Date:** 2026-10-24
+- **Version:** —
+- **Status:** Untested
+- **Found by:** the simulator's shrinker (`RaceHuntTests`). 53 of 400 random runs ended apart; 21 do now. Not yet seen in the game.
+
+**Problem.** Every change sends the whole bundle. If the host and a guest changed the same bundle in the same moment (one recolors, one takes a piece off), each took the other's packet over its own and the two swapped. They stayed different.
+
+**Cause.** The host passed a guest's packet on to the other guests as it was, and nobody decided which of two changes came last.
+
+**Fix.** The host applies a guest's packet, then sends what the bundle now is to everyone, the sender included (`CoopBridge.Receive`; log line `[Coop] Settled <name> <id>: <n> pieces.`). The host's order of changes is the order on every screen. The packet carries a base count of 0, which `CountMerge.Resolve` takes to mean "this stands": the guest's own merge no longer applies to it. The packet format is unchanged (protocol 2).
+
+**Not covered.** Health travels in Coop's own item update, which the host does not settle, so a health change at the same moment as a bundle change can still end apart. Existence races (a destroy or combine against a pick-up) are separate.
+
+## J-030: A pick-up of an item another player used up gave its ID to a different item
+
+- **Date:** 2026-10-24
+- **Version:** —
+- **Status:** Untested
+- **Found by:** the simulator's shrinker (`RaceHuntTests`). Not yet seen in the game.
+
+**Problem.** One player uses an item up (or combines it) while another picks it up. A third player then had one of their items renamed to the used-up item's ID, and the players disagreed about which bundle was which.
+
+**Cause.** The third player heard of the destroy first, then of the pick-up of an item that is gone. For an item it does not know, Coop takes the nearest item of the same prefab and gives it the new ID (J-007). J-026 only remembered destroys made by this mod's own combine, on the player who made them.
+
+**Fix.** The mod also remembers every destroy Coop reports, ours (`OnLocalItemDestroyed`) and other players' (`OnRemoteItemDestroyed`), for 30 seconds, and ignores a pick-up of such an ID.
+
+**Not a bug.** The hunt also showed an item in two places after two players picked it up at once and dropped it in different spots. That was the simulator: Coop 0.4.0 has the guest ask the host (`ItemPickupRequest`), and the host denies it if anyone holds the item (`ItemPickupDenied`), so only one player holds it. The simulator now does the same, and no random run ends apart.
+
+## J-031: A health change at the same moment as another change could end with different bundles
+
+- **Date:** 2026-10-24
+- **Version:** —
+- **Status:** Untested
+- **Found by:** the simulator's shrinker (`RaceHuntTests`). Not yet seen in the game.
+
+**Problem.** One player's health change (a candle burning down, food spoiling) at the same moment as another player's change to the same bundle could leave the two with different health, or different counts and colors.
+
+**Cause.** Health and amount travel in Coop's own packets (`ItemHealthChanged`, `ItemAmountChanged`), which the host only passes on. J-029 had the host settle bundle packets but not these.
+
+**Fix.** After Coop's host applies a health or amount change to a bundle, the mod has the host settle the bundle too (`SettleAfterCoopUpdate`, a postfix on `OnRemoteItemHealthChanged` and `OnRemoteItemAmountChanged`). Nothing changes for other items.
+
+**Also.** The simulator let a message the host passed on overtake the host's own earlier messages to the same guest, which a real connection can't do. It now keeps each link in order. That showed the remaining random failures were fewer than thought: 1 of 400 runs now ends apart (the double drop in J-030).
+
+## J-032: A count change and a health change in one frame were counted twice by the other players
+
+- **Date:** 2026-10-24
+- **Version:** —
+- **Status:** Untested
+- **Found by:** the simulator's shrinker, once random play could include a guest dropping out and rejoining. The failing run had no rejoin in it. Not yet seen in the game.
+
+**Problem.** A candle bundle changed in count and in health in the same frame (for example, a piece taken off while the candle burns down) ended with too many pieces on the other players' screens: 1 became 3 on the host and 5 on the guests.
+
+**Cause.** A candle bundle keeps its count in `amount`, and Coop's health packet (`ItemHealthChanged`, then `ItemAmountChanged`) carries `amount`. So Coop set the new count on the other side first. The bundle packet came after, saw a count unlike the one it started from, took that for a change made there too, and added its own change on top (the J-025 merge).
+
+**Fix.** After Coop applies a remote amount to a bundle, the mod remembers the count it set (`SetByCoop`). When a bundle packet arrives and the count is still that, no change was made locally, so the packet stands. A local change clears the note.
+
+**Not covered.** A guest that joins in the same frame as the host changes a count gets the change twice (the snapshot has it, and the bundle packet adds it again). The window is one frame. It is a test, `KnownLimit_AJoinInTheSameFrameAsACountChange_CountsItTwice`.
+
+## J-033: A guest joining in the same frame as a count change got the change twice
+
+- **Date:** 2026-10-24
+- **Version:** —
+- **Status:** Untested
+- **Found by:** the simulator's random play with guests dropping out and rejoining. Not yet seen in the game.
+
+**Problem.** If a guest joined in the frame the host changed a bundle's count, the guest ended with the change twice (a count of 2 changed to 3 showed as 4).
+
+**Cause.** The join snapshot already had the new count. The host's bundle packet followed and carried the change as a difference from the old count, which the guest added to what it already had (the J-025 merge).
+
+**Fix.** The host's own bundle packets now carry a base count of 0, which `CountMerge.Resolve` takes as "this stands". The merge was only needed to keep two players' simultaneous changes both; since J-029 the host settles every guest change after the host's packet, so a guest has nothing left to merge on the host's packets. The guest's packets to the host still carry their base.
+
+**Also.** A duplicated host packet is now harmless (a duplicated guest packet still counts twice, as before). 5000 random games of 60 steps, up to 6 acts at once, with rejoins, all end in agreement; 500 of them run as a test.
+
+## J-034: A co-op probe that runs the real packet code in one game
+
+- **Date:** 2026-10-24
+- **Version:** —
+- **Status:** Diagnostic
+
+**What.** `CoopProbe.cs` adds a developer key (`Co-op Probe Key`, off by default). Held or looked at, a bundle gets the packets the simulator uses, as if another player had sent them, through the real `ApplyState` and merge. It logs `[Probe] PASS` or `FAIL` for each check and a summary, then puts the bundle back as it was. Nothing is sent.
+
+**Why.** The simulator models Coop and the mod's rules, but not the mod's code or the game's objects. Two copies of the game can't run on one PC. This runs the mod's own packet code on a real bundle with no second player. It does not test Coop's own sync or the network.
+
+**Result (2026-10-24).** Run in the game on the Dizzy Oct 2026 pack, single player, 14 runs on 8 kinds of bundle: firewood, candles, cheese, bananas, lamb, pork, dates and apples. All 11 checks passed every time (`ALL PASSED: 11 passed, 0 failed`), with no `FAIL` and no errors, and each bundle was put back as it was. This covers both ways a count is stored (candles in amount, food in a stack code) and the J-025, J-029/J-033 and J-032 rules on real game objects.
+
+**Not tried yet.** Sausage stacks, hook lines, goat cheese, oranges, poles and shot. Hook lines use different code from the others and are the likeliest to differ. The probe does not test Coop's own sync, the host's settle step or the network; only a session with another player does.
+
+## J-035: The crew's way of taking a piece off a bundle didn't tell Coop or ask who held it
+
+- **Date:** 2026-10-24
+- **Version:** —
+- **Status:** Untested
+- **Found by:** the source-reading tests (`CoopSourceRuleTests`, `CoopGuardTests`), when the crew branch (J-023, J-024) was merged with the co-op branch. Not yet seen in the game.
+
+**Problem.** A crewman or another mod taking one piece off a bundle (`TakePieceOff`, `BundleApi.TakeOneFood`) made a loose piece that Coop was never told about, so another player picking the piece up could take the bundle's ID (as in J-007). It also worked on a bundle another player was holding. A lantern using a candle off a bundle (`TakeCandle`, from the crew's lantern refuel) did the same on a held bundle.
+
+**Fix.** `TakePieceOff` announces the new piece (`CoopBridge.Spawned`) and refuses a bundle another player holds. `TakeCandle` does nothing to a bundle another player holds, and still returns true so that the game doesn't use the whole bundle up.

@@ -560,7 +560,7 @@ namespace Dizzy.FirewoodBundle
         // after you come back aboard and the drop is refused.
         private static void Postfix(PickupableItemCollisionChecker __instance, ShipItem ___item)
         {
-            if (___item == null || ___item.held == null)
+            if (___item == null || ___item.held == null || CoopBridge.HeldByOther(___item))
                 return;
             bool wood = FirewoodPieces.IsActive(___item);
             bool hooks = FirewoodBundleConfig.HooksAreEnabled && HookLinePieces.IsHook(___item);
@@ -1199,6 +1199,7 @@ namespace Dizzy.FirewoodBundle
     {
         private static void Postfix(SaveablePrefab __instance, SavePrefabData data)
         {
+            CoopBridge.Loading = true;
             try
             {
                 ShipItem item = __instance.GetComponent<ShipItem>();
@@ -1214,6 +1215,10 @@ namespace Dizzy.FirewoodBundle
             catch (System.Exception ex)
             {
                 Plugin.Log.LogError("Could not rebuild a loaded bundle: " + ex);
+            }
+            finally
+            {
+                CoopBridge.Loading = false;
             }
         }
     }
