@@ -110,6 +110,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         // Coop. These are copied from how Coop behaves, not choices of ours.
         public bool CoopSetsHeldPointer = true;       // C5
         public bool CoopTakesNearestOnUnknownId = true; // C6
+        public bool RememberRemoteDestroys = true;    // J-030
         public bool HostArbitrates = true;            // J-029
         public bool CoopHostRelays = true;            // C4
 

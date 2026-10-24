@@ -367,3 +367,18 @@ Status is one of:
 **Fix.** The host applies a guest's packet, then sends what the bundle now is to everyone, the sender included (`CoopBridge.Receive`; log line `[Coop] Settled <name> <id>: <n> pieces.`). The host's order of changes is the order on every screen. The packet carries a base count of 0, which `CountMerge.Resolve` takes to mean "this stands": the guest's own merge no longer applies to it. The packet format is unchanged (protocol 2).
 
 **Not covered.** Health travels in Coop's own item update, which the host does not settle, so a health change at the same moment as a bundle change can still end apart. Existence races (a destroy or combine against a pick-up) are separate.
+
+## J-030: A pick-up of an item another player used up gave its ID to a different item
+
+- **Date:** 2026-10-24
+- **Version:** —
+- **Status:** Untested
+- **Found by:** the simulator's shrinker (`RaceHuntTests`). Not yet seen in the game.
+
+**Problem.** One player uses an item up (or combines it) while another picks it up. A third player then had one of their items renamed to the used-up item's ID, and the players disagreed about which bundle was which.
+
+**Cause.** The third player heard of the destroy first, then of the pick-up of an item that is gone. For an item it does not know, Coop takes the nearest item of the same prefab and gives it the new ID (J-007). J-026 only remembered destroys made by this mod's own combine, on the player who made them.
+
+**Fix.** The mod also remembers every destroy Coop reports, ours (`OnLocalItemDestroyed`) and other players' (`OnRemoteItemDestroyed`), for 30 seconds, and ignores a pick-up of such an ID.
+
+**Not covered.** Two players picking up the same item at once, then dropping it in different places, can end with the item in two places. It needs a rule for who holds it, which Coop does not give.

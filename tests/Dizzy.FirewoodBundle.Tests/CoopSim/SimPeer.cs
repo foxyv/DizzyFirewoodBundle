@@ -276,6 +276,8 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                     break;
 
                 case "Destroyed":
+                    if (Rules.RememberRemoteDestroys)
+                        _destroyed.Remember(message.Id, 0f);
                     Items.Remove(message.Id);
                     RemoteHeld.Remove(message.Id);
                     HeldByMe.Remove(message.Id);

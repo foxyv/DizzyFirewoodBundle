@@ -109,6 +109,44 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             Assert.True(apart > 0, "Fixed? Then turn this into a regression test and drop the known limit.");
         }
 
+        // J-030: one player used an item up while another picked it up. A third player heard of
+        // the destroy first, then the pick-up of an item that is gone, and gave that ID to the
+        // nearest item of the same prefab. Remembering remote destroys stops that.
+        [Fact]
+        public void J30_APickUpOfAnItemAnotherPlayerUsedUp_IsIgnoredOnEveryScreen()
+        {
+            for (int seed = 0; seed < 30; seed++)
+            {
+                SimNetwork net = Scenario.Start();
+                SimItem gone = net.Host.Create(10, SimKind.Candle, 1, 1);
+                net.Peers[1].Create(10, SimKind.Candle, 3, 1);
+                net.Settle();
+                net.Peers[2].PickUp(net.Peers[2].Items[gone.Id]);
+                net.Host.Destroy(net.Host.Items[gone.Id]);
+                net.SettleInterleaved(seed);
+                Assert.True(net.Differences().Count == 0, "seed " + seed + ": " + net.Summary());
+            }
+        }
+
+        [Fact]
+        public void J30_WithoutRememberingRemoteDestroys_TheThirdPlayerRenamesAnotherItem()
+        {
+            int apart = 0;
+            for (int seed = 0; seed < 30; seed++)
+            {
+                SimNetwork net = Scenario.Start(new SimRules { RememberRemoteDestroys = false });
+                SimItem gone = net.Host.Create(10, SimKind.Candle, 1, 1);
+                net.Peers[1].Create(10, SimKind.Candle, 3, 1);
+                net.Settle();
+                net.Peers[2].PickUp(net.Peers[2].Items[gone.Id]);
+                net.Host.Destroy(net.Host.Items[gone.Id]);
+                net.SettleInterleaved(seed);
+                if (net.Differences().Count > 0)
+                    apart++;
+            }
+            Assert.True(apart > 0);
+        }
+
         // Prints each distinct race. Not an assertion: it is how the races were found.
         [Fact]
         public void Hunt_ListsTheDistinctRaces()

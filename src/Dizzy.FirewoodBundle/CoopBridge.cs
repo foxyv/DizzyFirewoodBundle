@@ -126,6 +126,15 @@ namespace Dizzy.FirewoodBundle
                 Trace(harmony, itemSync, "OnRemoteItemDropped", "dropped");
                 Trace(harmony, itemSync, "OnRemoteItemPickedUp", "picked up");
 
+                // A pick-up of an item that is gone takes the nearest of its prefab (J-007), so
+                // every destroy, ours or another player's, is remembered for a while (J-030).
+                foreach (string name in new[] { "OnRemoteItemDestroyed", "OnLocalItemDestroyed" })
+                {
+                    MethodInfo destroyed = AccessTools.Method(itemSync, name);
+                    if (destroyed != null)
+                        harmony.Patch(destroyed, prefix: new HarmonyMethod(typeof(CoopBridge), nameof(RememberDestroyedItem)));
+                }
+
                 _present = true;
                 EnsureHandler(_network.GetValue(null, null));
                 Plugin.Log.LogInfo("Sailwind Coop found. Bundles are shared with other players (packet type " + Convert.ToByte(_packetType) + ").");
@@ -175,6 +184,13 @@ namespace Dizzy.FirewoodBundle
             if (__state != null)
                 Plugin.Log.LogInfo("[Coop] Another player " + Traced[__originalMethod] + " " + __state.name + " (" + FirewoodPieces.CountOf(__state) + "). Applying...");
             return true;
+        }
+
+        private static void RememberDestroyedItem(object[] __args)
+        {
+            int id = __args != null && __args.Length > 0 && __args[0] is int ? (int)__args[0] : ItemId(__args);
+            if (id != 0)
+                Destroyed_.Remember(id, Time.realtimeSinceStartup);
         }
 
         private static int ItemId(object[] args)
