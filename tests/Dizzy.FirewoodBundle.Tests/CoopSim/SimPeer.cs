@@ -295,8 +295,13 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             BundleState received;
             if (!BundleWire.TryRead(new BinaryReader(new MemoryStream(message.Body)), out received))
                 return;
+            Answer(received.Id);
+        }
+
+        internal void Answer(int id)
+        {
             SimItem item;
-            if (!Items.TryGetValue(received.Id, out item))
+            if (!Items.TryGetValue(id, out item))
                 return;
             var state = new BundleState
             {

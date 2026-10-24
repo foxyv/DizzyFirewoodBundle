@@ -48,5 +48,5 @@ py -3 scripts/coop_log_check.py host.log guest.log
 
 ## Known limits (not faults)
 
-- A health change at the same moment as another change to the same bundle can still end apart (`KnownLimit_HealthChangedAtTheSameMomentAsABundleChange_CanEndApart`). Health goes by Coop's own update.
+- Two players picking up the same item at once and dropping it in different places can leave it in two places (J-030).
 - A lost packet is not sent again. A rare `DIFFERS` after a lag spike may be this.

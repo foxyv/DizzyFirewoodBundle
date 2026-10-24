@@ -382,3 +382,18 @@ Status is one of:
 **Fix.** The mod also remembers every destroy Coop reports, ours (`OnLocalItemDestroyed`) and other players' (`OnRemoteItemDestroyed`), for 30 seconds, and ignores a pick-up of such an ID.
 
 **Not covered.** Two players picking up the same item at once, then dropping it in different places, can end with the item in two places. It needs a rule for who holds it, which Coop does not give.
+
+## J-031: A health change at the same moment as another change could end with different bundles
+
+- **Date:** 2026-10-24
+- **Version:** —
+- **Status:** Untested
+- **Found by:** the simulator's shrinker (`RaceHuntTests`). Not yet seen in the game.
+
+**Problem.** One player's health change (a candle burning down, food spoiling) at the same moment as another player's change to the same bundle could leave the two with different health, or different counts and colors.
+
+**Cause.** Health and amount travel in Coop's own packets (`ItemHealthChanged`, `ItemAmountChanged`), which the host only passes on. J-029 had the host settle bundle packets but not these.
+
+**Fix.** After Coop's host applies a health or amount change to a bundle, the mod has the host settle the bundle too (`SettleAfterCoopUpdate`, a postfix on `OnRemoteItemHealthChanged` and `OnRemoteItemAmountChanged`). Nothing changes for other items.
+
+**Also.** The simulator let a message the host passed on overtake the host's own earlier messages to the same guest, which a real connection can't do. It now keeps each link in order. That showed the remaining random failures were fewer than thought: 1 of 400 runs now ends apart (the double drop in J-030).

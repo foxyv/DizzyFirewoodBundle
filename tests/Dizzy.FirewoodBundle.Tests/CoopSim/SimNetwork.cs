@@ -45,6 +45,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             _queue.Add(new SimMessage
             {
                 From = Host.Name,
+                Hop = Host.Name,
                 To = name,
                 Type = "Snapshot",
                 Items = Host.Items.Values.Select(i => i.Clone()).ToList(),
@@ -83,6 +84,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         internal void Send(SimPeer from, string type, SimMessage message)
         {
             message.From = from.Name;
+            message.Hop = from.Name;
             message.Type = type;
             Sent++;
             if (type == "Bundle")
@@ -107,6 +109,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             return new SimMessage
             {
                 From = m.From,
+                Hop = m.Hop,
                 To = to,
                 Type = m.Type,
                 Body = m.Body,
@@ -155,9 +158,19 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                     if (other.IsHost || other.Name == message.From)
                         continue;
                     if (!Lost(message))
-                        _queue.Add(Copy(message, other.Name));
+                    {
+                        SimMessage relayed = Copy(message, other.Name);
+                        relayed.Hop = to.Name;
+                        _queue.Add(relayed);
+                    }
                 }
             }
+
+            // Health and amount go in Coop's own packet; once it has passed that on, the host
+            // settles the bundle (J-031).
+            if (message.Type == "ItemUpdate" && to.IsHost && Rules.HostSettlesHealth && SyncRules.ShouldArbitrate(true))
+                foreach (SimItem sent in message.Items)
+                    to.Answer(sent.Id);
             return true;
         }
 
@@ -176,7 +189,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                 var seen = new HashSet<string>();
                 for (int i = 0; i < _queue.Count; i++)
                 {
-                    if (seen.Add(_queue[i].From + ">" + _queue[i].To))
+                    if (seen.Add(_queue[i].Hop + ">" + _queue[i].To))
                         firsts.Add(i);
                 }
                 Deliver(firsts[random.Next(firsts.Count)]);

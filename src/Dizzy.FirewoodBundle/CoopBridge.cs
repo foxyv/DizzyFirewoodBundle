@@ -128,6 +128,12 @@ namespace Dizzy.FirewoodBundle
 
                 // A pick-up of an item that is gone takes the nearest of its prefab (J-007), so
                 // every destroy, ours or another player's, is remembered for a while (J-030).
+                foreach (string name in new[] { "OnRemoteItemHealthChanged", "OnRemoteItemAmountChanged" })
+                {
+                    MethodInfo update = AccessTools.Method(itemSync, name);
+                    if (update != null)
+                        harmony.Patch(update, postfix: new HarmonyMethod(typeof(CoopBridge), nameof(SettleAfterCoopUpdate)));
+                }
                 foreach (string name in new[] { "OnRemoteItemDestroyed", "OnLocalItemDestroyed" })
                 {
                     MethodInfo destroyed = AccessTools.Method(itemSync, name);
@@ -492,20 +498,43 @@ namespace Dizzy.FirewoodBundle
                 // The host settles it and tells everyone, the sender too, so two changes made at
                 // once end the same on every screen. Its own order is the order.
                 if (SyncRules.ShouldArbitrate(IsHost) && applied != null)
-                {
-                    BundleState settled;
-                    object network = _network.GetValue(null, null);
-                    if (network != null && TryRead(applied, out settled))
-                    {
-                        settled.BaseCount = CountMerge.Settled;
-                        _sendToAll.Invoke(network, new object[] { _packetType, Writer(settled) });
-                        Plugin.Log.LogInfo("[Coop] Settled " + applied.name + " " + settled.Id + ": " + settled.Count + " pieces.");
-                    }
-                }
+                    Settle(applied);
             }
             catch (Exception ex)
             {
                 Plugin.Log.LogWarning("Could not apply a bundle change from another player: " + ex);
+            }
+        }
+
+        // Sends what the bundle is here now to everyone, the sender of the change included.
+        private static void Settle(ShipItem item)
+        {
+            BundleState settled;
+            object network = _network.GetValue(null, null);
+            if (network != null && TryRead(item, out settled))
+            {
+                settled.BaseCount = CountMerge.Settled;
+                _sendToAll.Invoke(network, new object[] { _packetType, Writer(settled) });
+                Plugin.Log.LogInfo("[Coop] Settled " + item.name + " " + settled.Id + ": " + settled.Count + " pieces.");
+            }
+        }
+
+        // Health and amount travel in Coop's own packets, which the host only passes on. After
+        // it has applied one to a bundle, it settles the bundle like any other change (J-031).
+        private static void SettleAfterCoopUpdate(object[] __args)
+        {
+            try
+            {
+                if (!_present || !SyncRules.ShouldArbitrate(IsHost))
+                    return;
+                int id = ItemId(__args);
+                ShipItem item = id != 0 ? Find(id) : null;
+                if (item != null && (FirewoodPieces.KindOf(item) != null || HookLinePieces.IsHook(item)))
+                    Settle(item);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning("Could not settle a bundle after a health change: " + ex);
             }
         }
 
