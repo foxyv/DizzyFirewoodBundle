@@ -1,0 +1,558 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using BepInEx;
+using BepInEx.Bootstrap;
+using HarmonyLib;
+using UnityEngine;
+
+namespace Dizzy.FirewoodBundle
+{
+    // Shares bundles with the other players through Sailwind Coop.
+    //
+    // Coop sends an item's saved state only when a player joins. After that it sends
+    // amount now and then and never the spare extra value food bundles live in, and it
+    // never redraws anything. So whenever this mod rebuilds a bundle, it sends the
+    // item's whole state on a packet type of its own, and the other players rebuild it
+    // the same way. Coop's packet type is a byte and it uses less than 230 of them.
+    // Dizzy Clothesline takes 241 to 248, so bundles look from 249 up.
+    //
+    // A guest sends to the host, and the host passes it on. Everything is found by
+    // reflection: without Coop loaded, none of this runs.
+    internal static class CoopBridge
+    {
+        internal const string CoopGuid = "com.sailwindcoop.mod";
+
+        private static readonly HashSet<ShipItem> Changed = new HashSet<ShipItem>();
+        private static bool _present;
+        private static bool _applying;
+        private static bool _registering;
+        private static bool _warnedProtocol;
+        private static bool _warnedTaken;
+        private static object _registeredOn;
+
+        private static PropertyInfo _isMultiplayer;
+        private static PropertyInfo _isHost;
+        private static PropertyInfo _network;
+        private static FieldInfo _handlers;
+        private static MethodInfo _register;
+        private static MethodInfo _sendToAll;
+        private static MethodInfo _sendToAllExcept;
+        private static PropertyInfo _itemSync;
+        private static PropertyInfo _remoteApplying;
+        private static MethodInfo _setRemoteApplying;
+        private static MethodInfo _find;
+        private static MethodInfo _findInactive;
+        private static FieldInfo _remoteHeld;
+        private static MethodInfo _spawned;
+        private static object _packetType;
+        private static Delegate _handler;
+
+        // Set while a saved bundle loads, so a join does not send every bundle back out.
+        internal static bool Loading;
+
+        internal static void Apply(Harmony harmony)
+        {
+            PluginInfo info;
+            if (!Chainloader.PluginInfos.TryGetValue(CoopGuid, out info) || info.Instance == null)
+                return;
+
+            try
+            {
+                Type plugin = info.Instance.GetType();
+                Assembly coop = plugin.Assembly;
+                Type network = coop.GetType("SailwindCoop.Networking.P2PNetworkManager");
+                Type packetType = coop.GetType("SailwindCoop.Networking.Packets.PacketType");
+                Type itemSync = coop.GetType("SailwindCoop.Sync.ItemSyncManager");
+                if (network == null || packetType == null || itemSync == null)
+                {
+                    Plugin.Log.LogWarning("Sailwind Coop is loaded, but its networking was not found. Bundles will not be shared with other players.");
+                    return;
+                }
+
+                const BindingFlags PublicStatic = BindingFlags.Public | BindingFlags.Static;
+                _isMultiplayer = plugin.GetProperty("IsMultiplayer", PublicStatic);
+                _isHost = plugin.GetProperty("IsHost", PublicStatic);
+                _network = plugin.GetProperty("NetworkManager", PublicStatic);
+                _handlers = network.GetField("_handlers", BindingFlags.NonPublic | BindingFlags.Instance);
+                _register = network.GetMethod("RegisterHandler");
+                Type handlerType = _register != null ? _register.GetParameters()[1].ParameterType : null;
+                Type steamId = handlerType != null && handlerType.IsGenericType ? handlerType.GetGenericArguments()[0] : null;
+                if (steamId == null)
+                {
+                    Plugin.Log.LogWarning("This version of Sailwind Coop has changed its networking. Bundles will not be shared with other players.");
+                    return;
+                }
+
+                _sendToAll = network.GetMethod("SendToAllReliable", new[] { packetType, typeof(Action<BinaryWriter>) });
+                _sendToAllExcept = network.GetMethod("SendToAllExcept", new[] { steamId, packetType, typeof(Action<BinaryWriter>), typeof(bool) });
+                _itemSync = itemSync.GetProperty("Instance", PublicStatic);
+                _remoteApplying = itemSync.GetProperty("IsApplyingRemoteState", BindingFlags.Public | BindingFlags.Instance);
+                _setRemoteApplying = _remoteApplying != null ? _remoteApplying.GetSetMethod(true) : null;
+                _find = itemSync.GetMethod("FindItemByInstanceId", PublicStatic, null, new[] { typeof(int) }, null);
+                _findInactive = itemSync.GetMethod("FindInactiveItemByInstanceId", PublicStatic, null, new[] { typeof(int) }, null);
+                _remoteHeld = itemSync.GetField("_remoteHeldItems", BindingFlags.NonPublic | BindingFlags.Instance);
+                _spawned = itemSync.GetMethod("OnLocalItemSpawned", new[] { typeof(ShipItem) });
+                if (_spawned == null)
+                    Plugin.Log.LogWarning("Could not find how Coop learns about new items. Pieces taken off a bundle may not reach other players.");
+                if (_remoteHeld == null)
+                    Plugin.Log.LogWarning("Could not find which items other players hold. Their held bundles may still offer to combine.");
+
+                if (_isMultiplayer == null || _isHost == null || _network == null || _handlers == null || _sendToAll == null
+                    || _sendToAllExcept == null || _itemSync == null || _remoteApplying == null || _setRemoteApplying == null
+                    || _find == null)
+                {
+                    Plugin.Log.LogWarning("This version of Sailwind Coop has changed its networking. Bundles will not be shared with other players.");
+                    return;
+                }
+
+                _packetType = PickPacketType(packetType);
+                if (_packetType == null)
+                {
+                    Plugin.Log.LogWarning("Sailwind Coop has no free packet type left. Bundles will not be shared with other players.");
+                    return;
+                }
+
+                MethodInfo receive = typeof(CoopBridge).GetMethod(nameof(Receive), BindingFlags.NonPublic | BindingFlags.Static);
+                _handler = Delegate.CreateDelegate(handlerType, receive.MakeGenericMethod(steamId));
+
+                // Coop registers its handlers each time a session starts, and clears them
+                // when it ends. Register ours alongside.
+                harmony.Patch(_register, postfix: new HarmonyMethod(typeof(CoopBridge), nameof(AfterRegisterHandler)));
+                Trace(harmony, itemSync, "OnRemoteItemDropped", "dropped");
+                Trace(harmony, itemSync, "OnRemoteItemPickedUp", "picked up");
+
+                _present = true;
+                EnsureHandler(_network.GetValue(null, null));
+                Plugin.Log.LogInfo("Sailwind Coop found. Bundles are shared with other players (packet type " + Convert.ToByte(_packetType) + ").");
+            }
+            catch (Exception ex)
+            {
+                _present = false;
+                Plugin.Log.LogWarning("Could not link to Sailwind Coop. Bundles will not be shared with other players: " + ex);
+            }
+        }
+
+        private static readonly Dictionary<MethodBase, string> Traced = new Dictionary<MethodBase, string>();
+
+        private static void Trace(Harmony harmony, Type type, string method, string what)
+        {
+            MethodInfo target = AccessTools.Method(type, method);
+            if (target == null)
+                return;
+            Traced[target] = what;
+            harmony.Patch(
+                target,
+                prefix: new HarmonyMethod(typeof(CoopBridge), nameof(TraceBefore)),
+                postfix: new HarmonyMethod(typeof(CoopBridge), nameof(TraceAfter)));
+        }
+
+        // Says which bundle another player picked up or dropped, before and after Coop
+        // applies it. Only bundles are named, so the log stays short.
+        private static void TraceBefore(MethodBase __originalMethod, object[] __args, out ShipItem __state)
+        {
+            __state = TracedItem(__args);
+            if (__state != null)
+            {
+                Stall.Mark("Coop applying: another player " + Traced[__originalMethod] + " " + __state.name);
+                Stall.Bundle("another player " + Traced[__originalMethod] + " " + __state.name + " (" + FirewoodPieces.CountOf(__state) + ")");
+            }
+            if (__state != null)
+                Plugin.Log.LogInfo("[Coop] Another player " + Traced[__originalMethod] + " " + __state.name + " (" + FirewoodPieces.CountOf(__state) + "). Applying...");
+        }
+
+        private static void TraceAfter(MethodBase __originalMethod, ShipItem __state)
+        {
+            if (__state != null)
+                Stall.Mark("Coop done: another player " + Traced[__originalMethod] + " " + __state.name);
+            if (__state != null)
+                Plugin.Log.LogInfo("[Coop] ...applied: " + Traced[__originalMethod] + " " + __state.name + ".");
+        }
+
+        private static ShipItem TracedItem(object[] args)
+        {
+            try
+            {
+                if (args == null || args.Length == 0 || args[0] == null)
+                    return null;
+                FieldInfo field = args[0].GetType().GetField("ItemInstanceId");
+                if (field == null)
+                    return null;
+                ShipItem item = Find((int)field.GetValue(args[0]));
+                return item != null && (FirewoodPieces.KindOf(item) != null || HookLinePieces.IsHook(item)) ? item : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static object PickPacketType(Type enumType)
+        {
+            byte? free = SyncRules.PickPacketType(candidate => Enum.IsDefined(enumType, candidate));
+            return free.HasValue ? Enum.ToObject(enumType, free.Value) : null;
+        }
+
+        private static void AfterRegisterHandler(object __instance)
+        {
+            if (!_registering)
+                EnsureHandler(__instance);
+        }
+
+        private static void EnsureHandler(object network)
+        {
+            if (!_present || network == null || _registering)
+                return;
+
+            try
+            {
+                IDictionary handlers = _handlers.GetValue(network) as IDictionary;
+                if (handlers != null && handlers.Contains(_packetType))
+                {
+                    if (!Equals(handlers[_packetType], _handler) && !_warnedTaken)
+                    {
+                        _warnedTaken = true;
+                        Plugin.Log.LogWarning("Another mod uses Coop packet type " + Convert.ToByte(_packetType) + ". Bundles will not be shared with other players.");
+                    }
+                    return;
+                }
+                if (handlers == null && ReferenceEquals(_registeredOn, network))
+                    return;
+
+                _registering = true;
+                _register.Invoke(network, new object[] { _packetType, _handler });
+                _registeredOn = network;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning("Could not listen for bundle changes from other players: " + ex);
+            }
+            finally
+            {
+                _registering = false;
+            }
+        }
+
+        // ---- State ----
+
+        private static bool IsMultiplayer
+        {
+            get { return _present && Get(_isMultiplayer); }
+        }
+
+        private static bool IsHost
+        {
+            get { return _present && Get(_isHost); }
+        }
+
+        private static object ItemSync()
+        {
+            try
+            {
+                return _itemSync.GetValue(null, null);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool Get(PropertyInfo property, object target = null)
+        {
+            try
+            {
+                object value = property.GetValue(target, null);
+                return value is bool flag && flag;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // True while another player carries the item. Coop marks such an item as held by
+        // this player's own pointer to freeze its physics, so item.held alone cannot tell.
+        // Nothing may combine with it, take from it or gather it until it is put down,
+        // or the two games stop agreeing on what it holds.
+        internal static bool HeldByOther(ShipItem item)
+        {
+            if (!_present || item == null)
+                return false;
+            bool heldBySomeoneElse = item.held != null && !ReferenceEquals(item.held.GetHeldItem(), item);
+            bool multiplayer = _remoteHeld != null && IsMultiplayer;
+            return SyncRules.HeldByOther(true, heldBySomeoneElse, multiplayer, multiplayer && InRemoteHeld(item));
+        }
+
+        private static bool InRemoteHeld(ShipItem item)
+        {
+            try
+            {
+                object sync = ItemSync();
+                IDictionary held = sync != null ? _remoteHeld.GetValue(sync) as IDictionary : null;
+                SaveablePrefab save = item.GetComponent<SaveablePrefab>();
+                return held != null && save != null && held.Contains(save.instanceId);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // A piece taken off a bundle is a new item. Coop must hear of it before anyone
+        // picks it up: a pick-up of an item it does not know takes the nearest item of
+        // the same kind instead, usually the bundle itself, and gives it the new ID.
+        internal static void Spawned(SaveablePrefab saveable)
+        {
+            if (_spawned == null || saveable == null || !SyncRules.ShouldAnnounceSpawn(_present, _applying, IsMultiplayer))
+                return;
+            ShipItem item = saveable.GetComponent<ShipItem>();
+            if (item == null)
+                return;
+            try
+            {
+                object sync = ItemSync();
+                if (sync == null)
+                    return;
+                _spawned.Invoke(sync, new object[] { item });
+                Plugin.Log.LogInfo("[Coop] Told the other players about a new " + item.name + " " + saveable.instanceId + ".");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning("Could not tell the other players about a new " + item.name + ": " + ex);
+            }
+        }
+
+        // ---- Sending ----
+
+        // Called whenever a bundle is rebuilt or changes its count. The send waits for
+        // the end of the frame, so a change made in steps goes out once.
+        internal static void Note(ShipItem item)
+        {
+            if (item != null && SyncRules.ShouldNote(_present, _applying, Loading))
+                Changed.Add(item);
+        }
+
+        internal static void Flush()
+        {
+            if (Changed.Count == 0)
+                return;
+
+            try
+            {
+                object sync = ItemSync();
+                if (!SyncRules.ShouldSend(IsMultiplayer, sync != null && Get(_remoteApplying, sync)))
+                    return;
+                object network = _network.GetValue(null, null);
+                if (network == null)
+                    return;
+
+                foreach (ShipItem item in Changed)
+                {
+                    BundleState state;
+                    if (item != null && TryRead(item, out state))
+                    {
+                        _sendToAll.Invoke(network, new object[] { _packetType, Writer(state) });
+                        Plugin.Log.LogInfo("[Coop] Sent " + item.name + " " + state.Id + ": " + FirewoodPieces.CountOf(item) + " pieces.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning("Could not send a bundle to the other players: " + ex);
+            }
+            finally
+            {
+                Changed.Clear();
+            }
+        }
+
+        private static bool TryRead(ShipItem item, out BundleState state)
+        {
+            state = new BundleState();
+            SaveablePrefab save = item.GetComponent<SaveablePrefab>();
+            if (save == null || save.instanceId == 0)
+                return false;
+
+            state.Id = save.instanceId;
+            state.Amount = item.amount;
+            state.Health = item.health;
+            FoodState food = item.GetComponent<FoodState>();
+            if (food != null)
+            {
+                state.HasFood = true;
+                state.Dried = food.dried;
+                state.Smoked = food.smoked;
+                state.Salted = food.salted;
+                state.Spoiled = food.spoiled;
+            }
+            state.Stack = SausageStacks.Encode(item);
+            return true;
+        }
+
+        private static Action<BinaryWriter> Writer(BundleState state)
+        {
+            return writer => BundleWire.Write(writer, state);
+        }
+
+        // ---- Receiving ----
+
+        // Closed over Coop's SteamId type when the handler is made.
+        private static void Receive<TSender>(TSender sender, BinaryReader reader)
+        {
+            try
+            {
+                BundleState state;
+                if (!BundleWire.TryRead(reader, out state))
+                {
+                    if (!_warnedProtocol)
+                    {
+                        _warnedProtocol = true;
+                        Plugin.Log.LogWarning("Another player has a different version of " + Plugin.PluginName + ". Their bundle changes are ignored.");
+                    }
+                    return;
+                }
+
+                if (SyncRules.ShouldRelay(IsHost))
+                {
+                    object network = _network.GetValue(null, null);
+                    if (network != null)
+                        _sendToAllExcept.Invoke(network, new object[] { sender, _packetType, Writer(state), true });
+                }
+
+                ApplyRemote(state);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning("Could not apply a bundle change from another player: " + ex);
+            }
+        }
+
+        private static ShipItem Find(int id)
+        {
+            ShipItem item = _find.Invoke(null, new object[] { id }) as ShipItem;
+            if (item == null && _findInactive != null)
+                item = _findInactive.Invoke(null, new object[] { id }) as ShipItem;
+            return item;
+        }
+
+        private static void ApplyRemote(BundleState state)
+        {
+            ShipItem item = Find(state.Id);
+            if (item == null)
+            {
+                Plugin.Log.LogInfo("[Coop] Received bundle " + state.Id + ", which is not here.");
+                return;
+            }
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            Stall.Mark("applying " + item.name + " from another player");
+            Stall.Bundle("applied " + item.name + " from another player");
+            Plugin.Log.LogInfo("[Coop] Received " + item.name + " " + state.Id + (item.held != null ? " (held)" : "") + ".");
+            try
+            {
+                ApplyState(item, state);
+            }
+            finally
+            {
+                Stall.Report("Applied " + item.name + " from another player", watch);
+            }
+        }
+
+        private static void ApplyState(ShipItem item, BundleState state)
+        {
+
+            object sync = ItemSync();
+            bool coopWasApplying = sync != null && Get(_remoteApplying, sync);
+            _applying = true;
+            try
+            {
+                // Keeps Coop from sending on what the rebuild does to the item.
+                if (sync != null && !coopWasApplying)
+                    _setRemoteApplying.Invoke(sync, new object[] { true });
+
+                bool wasHanging = SausageStacks.IsHanging(item);
+                item.amount = state.Amount;
+                item.health = state.Health;
+                FoodState food = item.GetComponent<FoodState>();
+                if (food != null && state.HasFood)
+                {
+                    food.dried = state.Dried;
+                    food.smoked = state.Smoked;
+                    food.salted = state.Salted;
+                    food.spoiled = state.Spoiled;
+                }
+
+                BundleKind kind = FirewoodPieces.KindOf(item);
+                if (kind != null && !kind.CountInAmount)
+                    WriteStack(item, state.Stack);
+                Rebuild(item, wasHanging);
+            }
+            finally
+            {
+                if (sync != null && !coopWasApplying)
+                {
+                    try
+                    {
+                        _setRemoteApplying.Invoke(sync, new object[] { false });
+                    }
+                    catch (Exception ex)
+                    {
+                        Plugin.Log.LogWarning("Could not reset Coop's remote state flag: " + ex);
+                    }
+                }
+                _applying = false;
+            }
+        }
+
+        // The stack as the sender has it, color included, whatever ours was.
+        private static void WriteStack(ShipItem item, float saved)
+        {
+            StackCode code = StackCode.Decode(saved);
+            int color = code.Color;
+            int count = code.Count;
+            int width = code.Width;
+
+            StackState stack = item.GetComponent<StackState>();
+            if (code.IsSingle(SausageStacks.HangWidth))
+            {
+                if (stack != null)
+                {
+                    stack.Count = 1;
+                    stack.Width = 0;
+                    stack.Color = 0;
+                }
+                return;
+            }
+
+            if (stack == null)
+                stack = item.gameObject.AddComponent<StackState>();
+            stack.Count = Mathf.Max(1, count);
+            stack.Width = width;
+            stack.Color = color;
+        }
+
+        private static void Rebuild(ShipItem item, bool wasHanging)
+        {
+            if (HookLinePieces.IsHook(item))
+            {
+                if (HookLinePieces.IsLine(item))
+                    HookLineBuilder.Apply(item);
+                else if (HookLineBuilder.IsBuilt(item))
+                    HookLineBuilder.RestoreSingle(item);
+                return;
+            }
+
+            BundleKind kind = FirewoodPieces.KindOf(item);
+            if (kind == null)
+                return;
+            if (FirewoodPieces.CountOf(item) > 1 || kind.Hangs)
+                FirewoodBundleBuilder.Apply(item);
+            else if (wasHanging)
+                FirewoodBundleBuilder.Unhang(item);
+            else if (FirewoodBundleBuilder.IsBuilt(item))
+                FirewoodBundleBuilder.RestoreSingle(item);
+            item.UpdateLookText();
+        }
+    }
+}

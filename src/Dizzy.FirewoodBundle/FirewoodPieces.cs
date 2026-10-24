@@ -110,6 +110,7 @@ namespace Dizzy.FirewoodBundle
 
             int single = SingleAmount(item);
             item.amount = count <= 1 ? single : single + (count - 1) + color * ColorStride;
+            CoopBridge.Note(item);
         }
 
         // \ while holding or looking at a bundle ties it with the next color.
@@ -204,7 +205,7 @@ namespace Dizzy.FirewoodBundle
                 return false;
             if (!held.sold || !target.sold || target.unclickable)
                 return false;
-            if (target.held != null)
+            if (target.held != null || CoopBridge.HeldByOther(target))
                 return false;
 
             ItemRigidbody body = target.itemRigidbodyC;
@@ -541,6 +542,7 @@ namespace Dizzy.FirewoodBundle
                     saveable.SetParentObject(bundleSave.GetParentObject());
                 saveable.RegisterToSave();
             }
+            CoopBridge.Spawned(saveable);
 
             bundle.health = log.health;
             int left = CountOf(bundle) - 1;
@@ -565,7 +567,7 @@ namespace Dizzy.FirewoodBundle
                 return TakeHanging(bundle);
             if (!IsActive(bundle) || CountOf(bundle) <= 1)
                 return false;
-            if (bundle.held != null)
+            if (bundle.held != null || CoopBridge.HeldByOther(bundle))
                 return false;
             if (!bundle.sold)
                 return false;
@@ -609,6 +611,7 @@ namespace Dizzy.FirewoodBundle
                     saveable.SetParentObject(bundleSave.GetParentObject());
                 saveable.RegisterToSave();
             }
+            CoopBridge.Spawned(saveable);
 
             int left = CountOf(bundle) - 1;
             WriteCount(bundle, left);
@@ -626,7 +629,7 @@ namespace Dizzy.FirewoodBundle
         // hook with the strings gone, a plain sausage again.
         private static bool TakeHanging(ShipItem bundle)
         {
-            if (!IsActive(bundle) || bundle.held != null || !bundle.sold)
+            if (!IsActive(bundle) || bundle.held != null || !bundle.sold || CoopBridge.HeldByOther(bundle))
                 return false;
             GoPointer pointer = PointerFor(bundle);
             if (pointer == null || pointer.GetHeldItem() != null)
@@ -661,6 +664,7 @@ namespace Dizzy.FirewoodBundle
                     saveable.SetParentObject(bundleSave.GetParentObject());
                 saveable.RegisterToSave();
             }
+            CoopBridge.Spawned(saveable);
 
             WriteCount(bundle, count - 1);
             FirewoodBundleBuilder.Apply(bundle);
@@ -841,6 +845,8 @@ namespace Dizzy.FirewoodBundle
         private static bool IsLoose(ShipItem item)
         {
             if (item == null || !item.sold || item.held != null || item.unclickable || item.nailed || CountOf(item) > 1)
+                return false;
+            if (CoopBridge.HeldByOther(item))
                 return false;
             StoveFuel burning = item.GetComponent<StoveFuel>();
             if (burning != null && burning.inserted)

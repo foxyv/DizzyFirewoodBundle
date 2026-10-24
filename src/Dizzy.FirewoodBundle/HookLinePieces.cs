@@ -80,6 +80,7 @@ namespace Dizzy.FirewoodBundle
                 item.amount = keepLine ? single - 1 : single;
             else
                 item.amount = single + (count - 1);
+            CoopBridge.Note(item);
         }
 
         // A line of one uses an amount a loose hook never has, so it can stay strung.
@@ -124,7 +125,7 @@ namespace Dizzy.FirewoodBundle
                 return false;
             if (!held.sold || !target.sold || target.unclickable)
                 return false;
-            if (target.held != null)
+            if (target.held != null || CoopBridge.HeldByOther(target))
                 return false;
 
             // A hung line can take more hooks. Hanging marks the body as in a stove.
@@ -456,7 +457,7 @@ namespace Dizzy.FirewoodBundle
 
         internal static bool TrySplit(ShipItem line)
         {
-            if (!FirewoodBundleConfig.HooksAreEnabled || line == null || line.held != null || !line.sold)
+            if (!FirewoodBundleConfig.HooksAreEnabled || line == null || line.held != null || !line.sold || CoopBridge.HeldByOther(line))
                 return false;
             int count = CountOf(line);
             if (count <= 1 && !IsLine(line))
@@ -486,6 +487,7 @@ namespace Dizzy.FirewoodBundle
                     saveable.SetParentObject(lineSave.GetParentObject());
                 saveable.RegisterToSave();
             }
+            CoopBridge.Spawned(saveable);
 
             if (count <= 1)
             {
