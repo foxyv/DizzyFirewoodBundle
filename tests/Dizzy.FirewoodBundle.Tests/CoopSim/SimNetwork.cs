@@ -1,0 +1,173 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+
+namespace Dizzy.FirewoodBundle.Tests.CoopSim
+{
+    // One host and any number of guests, joined as a star: a guest talks to the host, and
+    // the host passes messages on. Messages wait in a queue until the test lets them arrive,
+    // so a test decides what happens before what.
+    public sealed class SimNetwork
+    {
+        private readonly List<SimMessage> _queue = new List<SimMessage>();
+
+        public readonly SimRules Rules;
+        public readonly List<SimPeer> Peers = new List<SimPeer>();
+        public int Sent;
+        public int SentBundlePackets;
+
+        public SimNetwork(SimRules rules = null)
+        {
+            Rules = rules ?? new SimRules();
+            Peers.Add(new SimPeer(this, "host", true, 0));
+        }
+
+        public SimPeer Host { get { return Peers[0]; } }
+
+        public int InFlight { get { return _queue.Count; } }
+
+        public SimPeer this[string name]
+        {
+            get { return Peers.First(p => p.Name == name); }
+        }
+
+        // A guest joins. Coop sends the host's whole world once, with every field.
+        public SimPeer Join(string name)
+        {
+            var peer = new SimPeer(this, name, false, Peers.Count);
+            Peers.Add(peer);
+            _queue.Add(new SimMessage
+            {
+                From = Host.Name,
+                To = name,
+                Type = "Snapshot",
+                Items = Host.Items.Values.Select(i => i.Clone()).ToList(),
+            });
+            return peer;
+        }
+
+        // From a peer: a host sends to every guest, a guest to the host.
+        internal void Send(SimPeer from, string type, SimMessage message)
+        {
+            message.From = from.Name;
+            message.Type = type;
+            Sent++;
+            if (type == "Bundle")
+                SentBundlePackets++;
+
+            foreach (SimPeer to in Peers)
+            {
+                if (to == from)
+                    continue;
+                if (!from.IsHost && !to.IsHost)
+                    continue;
+                _queue.Add(Copy(message, to.Name));
+            }
+        }
+
+        private static SimMessage Copy(SimMessage m, string to)
+        {
+            return new SimMessage
+            {
+                From = m.From,
+                To = to,
+                Type = m.Type,
+                Body = m.Body,
+                Items = m.Items == null ? null : m.Items.Select(i => i.Clone()).ToList(),
+                Id = m.Id,
+                X = m.X,
+            };
+        }
+
+        // Every peer's end of frame, host first.
+        public void EndFrame()
+        {
+            foreach (SimPeer peer in Peers)
+                peer.EndFrame();
+        }
+
+        // Delivers the message that has waited longest. False when none is waiting.
+        public bool Step()
+        {
+            if (_queue.Count == 0)
+                return false;
+            SimMessage message = _queue[0];
+            _queue.RemoveAt(0);
+            SimPeer to = Peers.FirstOrDefault(p => p.Name == message.To);
+            if (to == null)
+                return true;
+
+            to.Receive(message);
+
+            // The host passes a guest's message on to the other guests.
+            if (to.IsHost && Rules.CoopHostRelays && SyncRules.ShouldRelay(true))
+            {
+                foreach (SimPeer other in Peers)
+                {
+                    if (other.IsHost || other.Name == message.From)
+                        continue;
+                    _queue.Add(Copy(message, other.Name));
+                }
+            }
+            return true;
+        }
+
+        public void Flush()
+        {
+            int guard = 100000;
+            while (Step())
+            {
+                if (--guard == 0)
+                    throw new InvalidOperationException("The messages never stopped.");
+            }
+        }
+
+        // Changes the order messages will arrive in. The same seed gives the same order.
+        public void Shuffle(int seed)
+        {
+            var random = new Random(seed);
+            for (int i = _queue.Count - 1; i > 0; i--)
+            {
+                int j = random.Next(i + 1);
+                SimMessage swap = _queue[i];
+                _queue[i] = _queue[j];
+                _queue[j] = swap;
+            }
+        }
+
+        // Empty when every peer has the same items. Otherwise one line for each difference,
+        // with the host as the first side.
+        public List<string> Differences()
+        {
+            var found = new List<string>();
+            foreach (SimPeer peer in Peers.Skip(1))
+            {
+                foreach (int id in Host.Items.Keys.Union(peer.Items.Keys).OrderBy(i => i))
+                {
+                    SimItem a, b;
+                    bool hasA = Host.Items.TryGetValue(id, out a);
+                    bool hasB = peer.Items.TryGetValue(id, out b);
+                    if (!hasA || !hasB)
+                    {
+                        found.Add("#" + id + " is only on " + (hasA ? "host" : peer.Name));
+                        continue;
+                    }
+                    if (a.Prefab != b.Prefab || a.Count != b.Count || a.Health != b.Health || a.Dried != b.Dried)
+                        found.Add("#" + id + " differs: host " + a + " / " + peer.Name + " " + b);
+                    else if (Math.Abs(a.X - b.X) > 0.0001)
+                        found.Add("#" + id + " is in two places: host " + a.X + " / " + peer.Name + " " + b.X);
+                }
+            }
+            return found;
+        }
+
+        public string Report()
+        {
+            var text = new StringBuilder();
+            foreach (string line in Differences())
+                text.AppendLine(line);
+            return text.ToString();
+        }
+    }
+}
