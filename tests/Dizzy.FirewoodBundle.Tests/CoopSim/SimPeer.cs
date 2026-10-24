@@ -26,6 +26,10 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         // Bundle packets that arrived here, to see that none came twice.
         public int BundlePacketsReceived;
 
+        // Bundle packets that named an item not here and not known to be destroyed: the packet
+        // is dropped (the log says "not here").
+        public int BundlePacketsForUnknownItems;
+
         // Bundle packets that this player sent and that came back to them.
         public int OwnPacketsReceived;
 
@@ -393,7 +397,11 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                 return;
             SimItem item;
             if (!Items.TryGetValue(state.Id, out item))
+            {
+                if (!_destroyed.WasDestroyed(state.Id, 0f))
+                    BundlePacketsForUnknownItems++;
                 return;
+            }
 
             int local = item.Count;
             _applying = true;

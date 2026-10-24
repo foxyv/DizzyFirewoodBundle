@@ -225,6 +225,21 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             Assert.NotEmpty(net.Differences());
         }
 
+        // With the links in order and nothing lost, does a bundle packet ever reach a player who
+        // lacks the item? If never, a resend has nothing to do on Coop's reliable links.
+        [Fact]
+        public void OnReliableLinks_ABundlePacketNeverReachesAPlayerWithoutTheItem()
+        {
+            int unknown = 0;
+            for (int seed = 0; seed < 400; seed++)
+            {
+                SimNetwork net = Scenario.Generate(seed, 30, 3).Run();
+                unknown += net.Peers.Sum(p => p.BundlePacketsForUnknownItems);
+            }
+            _output.WriteLine(unknown + " bundle packets in 400 runs named an item that was not there.");
+            Assert.Equal(0, unknown);
+        }
+
         // Prints each distinct race. Not an assertion: it is how the races were found.
         [Fact]
         public void Hunt_ListsTheDistinctRaces()
