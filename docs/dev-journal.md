@@ -471,7 +471,9 @@ There is no unit test: it is in the code that talks to Unity.
 
 **Result (2026-10-24).** Run in the game on the Dizzy Oct 2026 pack, single player, 14 runs on 8 kinds of bundle: firewood, candles, cheese, bananas, lamb, pork, dates and apples. All 11 checks passed every time (`ALL PASSED: 11 passed, 0 failed`), with no `FAIL` and no errors, and each bundle was put back as it was. This covers both ways a count is stored (candles in amount, food in a stack code) and the J-025, J-029/J-033 and J-032 rules on real game objects.
 
-**Not tried yet.** Sausage stacks, hook lines, goat cheese, oranges, poles and shot. Hook lines use different code from the others and are the likeliest to differ. The probe does not test Coop's own sync, the host's settle step or the network; only a session with another player does.
+**Second run (2026-10-24, the merged build, crates from `SpawnItem`).** 12 more runs, all 11 checks passed each time, no `FAIL`, no errors, no stalls during the probe: a hook line (12 hooks), oranges (24), goat cheese (12) and sausage stacks (16) at every width code from 0 to 8. A hangable bundle in hand visibly shifts for a moment when the probe runs, because the probe really rebuilds it at one piece fewer and back; the saved state ends the same.
+
+**Not tried yet.** Wood poles and round shot (the test pack lacks Tent and Plank and Dangerous Waters). A bundle hanging on a hook, rather than held, goes through the unhang and rehang path when a packet rebuilds it, and the probe has not been run on one. The probe does not test Coop's own sync, the host's settle step or the network; only a session with another player does.
 
 ## J-035: The crew's way of taking a piece off a bundle didn't tell Coop or ask who held it
 
