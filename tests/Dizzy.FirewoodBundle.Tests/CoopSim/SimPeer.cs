@@ -22,6 +22,12 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         public readonly HashSet<int> RemoteHeld = new HashSet<int>();
         public readonly HashSet<int> HeldByMe = new HashSet<int>();
 
+        // Bundle packets that arrived here, to see that none came twice.
+        public int BundlePacketsReceived;
+
+        // Bundle packets that this player sent and that came back to them.
+        public int OwnPacketsReceived;
+
         // True while a save is loading, as CoopBridge.Loading is.
         public bool Loading;
 
@@ -309,6 +315,9 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
 
         private void ReceiveBundle(SimMessage message)
         {
+            BundlePacketsReceived++;
+            if (message.From == Name)
+                OwnPacketsReceived++;
             BundleState state;
             if (!BundleWire.TryRead(new BinaryReader(new MemoryStream(message.Body)), out state))
                 return;

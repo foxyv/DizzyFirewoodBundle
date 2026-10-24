@@ -59,6 +59,41 @@ namespace Dizzy.FirewoodBundle.Tests
             Assert.Equal(2, BundleWire.Protocol);
         }
 
+        [Fact]
+        public void Wire_BytesAreFrozen_UntilTheProtocolNumberChanges()
+        {
+            // If this fails the layout changed. Players on the old layout would read garbage,
+            // so raise BundleWire.Protocol, then update the bytes.
+            var state = new BundleState
+            {
+                Id = 1, Amount = 2f, Health = 0.5f, HasFood = true,
+                Dried = 0f, Smoked = 0f, Salted = 0f, Spoiled = 0f,
+                Stack = 3f, BaseCount = 4, Count = 5,
+            };
+            var stream = new MemoryStream();
+            BundleWire.Write(new BinaryWriter(stream), state);
+
+            Assert.Equal(
+                "02" + "01000000" + "00000040" + "0000003f" + "01" + "00000000" + "00000000" + "00000000" + "00000000" + "00004040" + "04000000" + "05000000",
+                System.BitConverter.ToString(stream.ToArray()).Replace("-", "").ToLowerInvariant());
+            Assert.Equal(2, BundleWire.Protocol);
+        }
+
+        [Fact]
+        public void Wire_ATruncatedPacket_ThrowsAndLeavesNothingHalfRead()
+        {
+            var stream = new MemoryStream();
+            BundleWire.Write(new BinaryWriter(stream), Sample());
+            byte[] whole = stream.ToArray();
+
+            for (int length = 1; length < whole.Length; length++)
+            {
+                var cut = new BinaryReader(new MemoryStream(whole, 0, length));
+                BundleState read;
+                Assert.Throws<EndOfStreamException>(() => BundleWire.TryRead(cut, out read));
+            }
+        }
+
         [Theory]
         [InlineData(1, 0, 0)]
         [InlineData(5, 3, 2)]

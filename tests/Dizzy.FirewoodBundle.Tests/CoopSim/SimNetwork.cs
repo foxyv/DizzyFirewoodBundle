@@ -19,6 +19,8 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         private int _peersEver = 1;
         private Random _loss;
         private double _lossRate;
+        private Random _duplicate;
+        private double _duplicateRate;
 
         public SimNetwork(SimRules rules = null)
         {
@@ -64,6 +66,14 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             _loss = new Random(seed);
         }
 
+        // From now on each message is delivered twice with this chance. Coop's star network and
+        // reliable sends should not do this; the fault shows what it would cost if they did.
+        public void DuplicateMessages(double rate, int seed)
+        {
+            _duplicateRate = rate;
+            _duplicate = new Random(seed);
+        }
+
         private bool Lost(SimMessage m)
         {
             return _loss != null && m.Type != "Snapshot" && _loss.NextDouble() < _lossRate;
@@ -84,7 +94,10 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                     continue;
                 if (!from.IsHost && !to.IsHost)
                     continue;
-                if (!Lost(message))
+                if (Lost(message))
+                    continue;
+                _queue.Add(Copy(message, to.Name));
+                if (_duplicate != null && _duplicate.NextDouble() < _duplicateRate)
                     _queue.Add(Copy(message, to.Name));
             }
         }

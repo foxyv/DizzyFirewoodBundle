@@ -152,3 +152,9 @@ The simulator runs these in `dotnet test` (`tests/Dizzy.FirewoodBundle.Tests/Coo
 - **X2 (fixed, J-026):** a combine racing a pick-up used to give the bundle the other item's ID. The host now ignores a pick-up of a bundle it just combined away.
 - **Still open:** concurrent play still ends in disagreement in about 3 of 20 runs, from other races (for example health and hanging changed at once). A lost message is still never sent again, and since J-025 a later change no longer heals it.
 - **Not yet done:** the 5% loss run for X cases and Layer 2 (see the check above). X1 and X2 are fixed.
+
+## Source rules and network facts (2026-10-24)
+
+- **Source rules** (`CoopGuardTests`, `CoopSourceRuleTests`) read the mod's C# and fail if: a way to change a bundle never reaches `HeldByOther`; a piece made from a bundle is not registered and announced; a count is written outside `WriteCount` (which notes the count it started from); an item is destroyed without `CoopBridge.Destroyed`; or an item's object is destroyed that was not just made in that method. Each exemption has a reason and a test that it is still needed. The rules were broken on purpose once to check they fail. They found nothing new beyond the three keys in J-028.
+- **Wire bytes** of protocol 2 are frozen in a test. Changing the layout fails it until the protocol number is raised.
+- **Coop's network** (read from `P2PNetworkManager` in Coop 0.4.0): guests connect only to the host ("star topology"), sends are reliable Steam P2P, the host relays to everyone except the sender, and the host drops packets from players it has not admitted. So a packet should arrive once, and never come back to its sender (S5). A duplicated packet would be counted twice by the J-025 merge (S5, recorded as a known limit); a sequence number in the packet would fix it if Coop ever did that.

@@ -566,6 +566,55 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             Assert.Empty(net.Differences());
         }
 
+        // S5: Coop is a star and sends reliably, so a packet should arrive once. The merge in J-025
+        // adds the sender's difference to the count, so one that arrived twice would count twice.
+        [Fact]
+        public void S5_AGuestsPacket_ReachesTheHostOnce_AndTheOtherGuestOnce_AndTheSenderNever()
+        {
+            var net = new SimNetwork();
+            SimPeer one = net.Join("one");
+            SimPeer two = net.Join("two");
+            net.Settle();
+            SimItem candle = one.Create(Candle, SimKind.Candle, 1, 4);
+            net.Settle();
+            int hostBefore = net.Host.BundlePacketsReceived;
+
+            one.TakeOne(candle);
+            net.Settle();
+
+            Assert.Equal(1, net.Host.BundlePacketsReceived - hostBefore);
+            Assert.Equal(1, two.BundlePacketsReceived);
+            Assert.Equal(0, one.BundlePacketsReceived);
+        }
+
+        [Fact]
+        public void S5_AGuestsOwnPacket_NeverComesBackToIt_WhateverThePlay()
+        {
+            SimNetwork net = ThreePeers();
+            PlaySequential(net, 7, 500);
+
+            // Every bundle packet went to the host or on from the host: the origin never gets its own.
+            Assert.Equal(0, net["one"].OwnPacketsReceived + net["two"].OwnPacketsReceived + net.Host.OwnPacketsReceived);
+        }
+
+        [Fact]
+        public void S5_ADuplicatedPacket_WouldBeCountedTwice_KnownLimit()
+        {
+            // Not something Coop does. If it ever did, the count would drift, and the fix would be
+            // a sequence number in the packet (protocol 3).
+            var net = new SimNetwork();
+            SimItem candle = net.Host.Create(Candle, SimKind.Candle, 1, 4);
+            SimPeer guest = net.Join("guest");
+            net.Settle();
+            net.DuplicateMessages(1.0, 1);
+
+            net.Host.TakeOne(candle);
+            net.Settle();
+
+            Assert.Equal(3, candle.Count);
+            Assert.Equal(2, guest.Items[candle.Id].Count);
+        }
+
         // S4: a change goes out once, however many pieces it was made of.
         [Fact]
         public void S4_OneBundlePacketForEachRebuild()
