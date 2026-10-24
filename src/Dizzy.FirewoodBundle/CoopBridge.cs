@@ -509,6 +509,7 @@ namespace Dizzy.FirewoodBundle
             try
             {
                 ApplyState(item, state);
+                Plugin.Log.LogInfo("[Coop] Applied " + item.name + " " + state.Id + ": " + CountNow(item) + " pieces.");
             }
             finally
             {

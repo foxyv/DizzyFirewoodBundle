@@ -327,3 +327,15 @@ Status is one of:
 **Cause.** B is gone when the pick-up reaches the host. For an item it does not know, Coop takes the nearest item of the same prefab and gives it the new ID (as in J-007). That is A.
 
 **Fix.** `FirewoodPieces.Consume`, which destroys a combined bundle, notes its ID (`CoopBridge.Destroyed`). For 30 seconds a pick-up of that ID is ignored (`DestroyedMemory`, checked in the patch on `OnRemoteItemPickedUp`). The guest's copy goes when it hears of the destroy. Only the combine path is covered; other places that destroy an item are not.
+
+## J-027: A way to check two players' logs for bundles that went out of step
+
+- **Date:** 2026-10-23
+- **Version:** —
+- **Status:** Diagnostic
+
+**What.** `scripts/coop_log_check.py` reads the host's and the guest's `LogOutput.log` from one co-op session and reports bundles that were sent and never received, bundles whose last count differs between the two players, bundles sent to a player who does not have them, warnings and errors from Dizzy Bundle Up, and (with `--stall`) stall reports. It lists merges of simultaneous changes and ignored pick-ups as notes. `scripts/test_coop_log_check.py` tests it.
+
+**Log change.** After applying a bundle from another player, the mod now logs `[Coop] Applied <name> <id>: <n> pieces.` The checker compares final counts with it. Both players need this build.
+
+**Why.** Two copies of the game can't be run on one PC (Coop needs a Steam account for each player), so a real session with another player is the only test of Coop's own sync. This makes a session's result readable.

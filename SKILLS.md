@@ -110,3 +110,14 @@ The 48-slot table never went inside the meat, but it sat well off it. Even the b
 ## Deploying to a test pack
 
 `deploy.py` copies only `Dizzy.FirewoodBundle.dll` and its `.pdb`. The mod also needs `Dizzy.FirewoodBundle.Core.dll`, which holds the layout math. After deploying, copy `Dizzy.FirewoodBundle.Core.dll` and its `.pdb` from `src/Dizzy.FirewoodBundle/bin/Release/` into both the pack's `plugins/Dizzy.FirewoodBundle` folder and the library's `extracted/Dizzy.FirewoodBundle` folder. A stale Core next to a new mod DLL makes the game fail the first time it reaches a missing method. Compare the two files' hashes to be sure.
+
+## Checking a co-op session
+
+The simulator in `tests/Dizzy.FirewoodBundle.Tests/CoopSim` tests the rules without the game (see `docs/coop-simulator-plan.md`). Coop can't be run twice on one PC, so Coop's real behaviour is only tested in a session with another player. Both players need the same build of Bundle Up. After the session, each sends their `BepInEx/LogOutput.log`, and `BepInEx/BundleUp-stall.log` if it exists:
+
+```powershell
+py -3 scripts/coop_log_check.py HOST_LogOutput.log GUEST_LogOutput.log
+py -3 scripts/coop_log_check.py HOST_LogOutput.log GUEST_LogOutput.log --stall HOST_BundleUp-stall.log GUEST_BundleUp-stall.log
+```
+
+It prints each problem (`LOST`, `DIFFERS`, `UNKNOWN`, `WARNING`, `ERROR`, `STALL`) and exits 1 if there is one. Put what it finds in the journal entry of the fix. Its tests run with `py -3 -m unittest test_coop_log_check` from `scripts/`.
