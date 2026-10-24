@@ -111,17 +111,82 @@ The 48-slot table never went inside the meat, but it sat well off it. Even the b
 
 `deploy.py` copies only `Dizzy.FirewoodBundle.dll` and its `.pdb`. The mod also needs `Dizzy.FirewoodBundle.Core.dll`, which holds the layout math. After deploying, copy `Dizzy.FirewoodBundle.Core.dll` and its `.pdb` from `src/Dizzy.FirewoodBundle/bin/Release/` into both the pack's `plugins/Dizzy.FirewoodBundle` folder and the library's `extracted/Dizzy.FirewoodBundle` folder. A stale Core next to a new mod DLL makes the game fail the first time it reaches a missing method. Compare the two files' hashes to be sure.
 
-## Checking a co-op session
+## Co-op simulation and testing
 
-The simulator in `tests/Dizzy.FirewoodBundle.Tests/CoopSim` tests the rules without the game (see `docs/coop-simulator-plan.md`). Coop can't be run twice on one PC, so Coop's real behaviour is only tested in a session with another player. Both players need the same build of Bundle Up. After the session, each sends their `BepInEx/LogOutput.log`, and `BepInEx/BundleUp-stall.log` if it exists:
+Bundles are shared through Sailwind Coop by `CoopBridge`. Two copies of the game can't run on one PC (Coop uses Steam P2P and needs an account for each player), so co-op is tested in layers. Each catches what the one before it can't. Read `docs/coop-simulator-plan.md` for the plan and the findings.
+
+| Layer | What it runs | Where | Catches |
+|-------|--------------|-------|---------|
+| Simulator | The sync rules against a model of Coop | `tests/Dizzy.FirewoodBundle.Tests/CoopSim` | Races, merge mistakes, wrong rules |
+| Source tests | The mod's source, read as text | `CoopGuardTests`, `CoopSourceRuleTests` | A new code path that skips a co-op rule |
+| Probe | The mod's real packet code on a real bundle, one game | `CoopProbe.cs` | Mistakes in the code and the game objects |
+| Session | Two players, then the log checker | `docs/coop-session-script.md`, `scripts/coop_log_check.py` | Whether Coop itself behaves as modelled |
+
+### Running the tests
+
+```powershell
+dotnet test tests/Dizzy.FirewoodBundle.Tests
+dotnet test tests/Dizzy.FirewoodBundle.Tests --filter "FullyQualifiedName~RaceHunt" --logger "console;verbosity=detailed"
+py -3 -m unittest test_coop_log_check   # from scripts/
+```
+
+The second command also prints every distinct way a random game still ends with the peers disagreeing, each cut down to a few acts.
+
+### How the simulator works
+
+- **Core holds the decisions.** Anything the sync decides without the game lives in `src/Dizzy.FirewoodBundle.Core/CoopSync.cs` so the tests can run it: `BundleState`, `BundleWire` (the packet; `Protocol` is 2), `StackCode`, `CountMerge` (a base count of `Settled`, 0, means the packet stands), `DestroyedMemory`, `SyncRules`. If a new rule can be written without Unity types, put it there.
+- **The model.** `SimNetwork` is a host and guests in a star, with a message queue per link. `SimPeer` is one player's game, `SimItem` an item. `SimRules` has one switch for each fact about Coop or each fix. The facts come from the decompiled Coop 0.4.0: the join snapshot, `amount` sent only with health, the host passing messages on, a remote-held item having `held` set, a pick-up of an unknown ID taking the nearest item of the prefab, a guest asking the host to approve a pick-up, a leaver's items dropping where they were. Check them again when Coop updates.
+- **Delivery.** `Settle` and `SettleInterleaved(seed)` deliver everything, the second with links taking turns at random (each link keeps its order, as a reliable connection does). `LoseMessages`, `DuplicateMessages`, `Disconnect` and `Join` cut it up.
+- **Every fix has a twin.** A regression test shows the fix works. A twin runs the same play with its `SimRules` switch off and shows it goes wrong. A fix whose twin still passes is not tested.
+- **Random play.** `Scenario.cs` makes a game as a list of acts (`Generate`), runs it (`Run`) and cuts a failing one down to the fewest acts that still fail (`Shrink`). `LongRandomGames_WithRejoins_AlwaysEndInAgreement` runs 500. A new bundle action gets an `Op` there.
+
+### Source tests and their lists
+
+- `CoopGuardTests` fails if a way to change a bundle never reaches `CoopBridge.HeldByOther`. The ways that only touch the player's own hand are listed with a reason.
+- `CoopSourceRuleTests` fails if a piece is made from a bundle without `RegisterToSave` and `CoopBridge.Spawned`, if a count or tie color is written outside the two `WriteCount` methods (which note the count first), or if an item is destroyed without `CoopBridge.Destroyed`.
+- Each has an exemption list with a reason for every entry, and a test that fails when an entry is out of date. To exempt something, say why in the list. Do not loosen the rule.
+
+### When you add or change a way to change a bundle
+
+1. Ask `CoopBridge.HeldByOther` before changing a bundle that might be in another player's hands.
+2. Write the count through `WriteCount`, so `CoopBridge.CountWillChange` runs first.
+3. Announce a new piece with `CoopBridge.Spawned`, after `RegisterToSave`.
+4. Call `CoopBridge.Destroyed` before an item is destroyed.
+5. Add a simulator test with a twin. If the fix is a rule, add a `SimRules` switch.
+6. Add a journal entry (J-NNN, status Untested, "Found by" saying how). Say in "Not covered" what the test can't show.
+7. If the packet format changes, raise `BundleWire.Protocol` and update the frozen bytes in `CoopSyncTests`. Players on different protocols ignore each other's bundle packets.
+
+### Co-op probe (one game, no second player)
+
+With Sailwind Coop installed, set `Co-op Probe Key` (section Developer, off by default) in the Bundle Up config. Hold or look at a bundle and press the key. `CoopProbe.cs` feeds it the packets the simulator uses, as if another player had sent them, through the real `ApplyState` and merge, and writes `[Probe] PASS` or `[Probe] FAIL` lines and a summary to `LogOutput.log`. It checks the wire round trip, applying a bundle's own state, another player's count, the J-025 merge, a settled packet standing over a local change, a count Coop set (J-032), and that the bundle is put back as it was. Nothing is sent. A held hangable bundle shifts for a moment, because the probe really rebuilds it at one piece fewer and back.
+
+To get bundles to try it on, deploy to a test pack (see above) and spawn crates with the NANDCommand console command `SpawnItem <code>`. Open the crate, then press G on a loose piece (or loose hook) to pick up a bundle of at least 3.
+
+| Item | Crate | Item | Crate |
+|------|-------|------|-------|
+| Firewood | 108 | Cheese | 7 |
+| Lantern candles | 131 | Goat cheese | 8 |
+| Sausages | 15 | Oranges | 213 |
+| Fishing hooks (hook line) | 104 | Apples | 224 |
+| Bananas | 17 | Pork | 16 |
+| Dates | 2 | Lamb | 4 |
+
+Wood poles and round shot need the Tent and Plank and Dangerous Waters mods. Numbers repeat between lists, so check the name against `List items`. Not yet probed: a bundle hanging on a hook rather than held, poles and shot.
+
+### Checking a co-op session
+
+Coop's own behaviour is only tested in a session with another player. Both need the same build of Bundle Up and the same Coop version. `docs/coop-session-script.md` is a 12-step script with the log lines to expect. After it, each player sends their `BepInEx/LogOutput.log`, and `BepInEx/BundleUp-stall.log` if it exists:
 
 ```powershell
 py -3 scripts/coop_log_check.py HOST_LogOutput.log GUEST_LogOutput.log
 py -3 scripts/coop_log_check.py HOST_LogOutput.log GUEST_LogOutput.log --stall HOST_BundleUp-stall.log GUEST_BundleUp-stall.log
 ```
 
-### Co-op probe (one game, no second player)
+It prints each problem (`LOST`, `DIFFERS`, `UNKNOWN`, `WARNING`, `ERROR`, `STALL`) and exits 1 if there is one. Put what it finds in the journal entry of the fix.
 
-With Sailwind Coop installed, set `Co-op Probe Key` (section Developer, off by default) in the Bundle Up config, hold or look at a bundle in a game and press the key. `CoopProbe.cs` feeds the bundle packets the simulator uses, as if another player had sent them, through the real `ApplyState` and merge, and writes `[Probe] PASS` / `[Probe] FAIL` lines and a summary to `LogOutput.log`. It checks the wire round trip, applying a packet to its own state, another player's count, the J-025 merge, a settled packet standing over a local change, a count Coop set (J-032) and that the bundle is put back as it was. Nothing is sent. It needs no session, so it runs the real mod code that the simulator only models. Try it on a firewood bundle, a candle bundle, a food stack and a hook line.
+### What is still unproven
 
-It prints each problem (`LOST`, `DIFFERS`, `UNKNOWN`, `WARNING`, `ERROR`, `STALL`) and exits 1 if there is one. Put what it finds in the journal entry of the fix. Its tests run with `py -3 -m unittest test_coop_log_check` from `scripts/`.
+- J-025 to J-033 and J-035 have not been played in a real session. The simulator models Coop as read from its code.
+- Coop sends health and amount in its own packets, which the host settles only through the mod (J-031).
+- A lost bundle packet is never sent again, and a duplicated guest packet would count twice. Coop's links are reliable and send no duplicates, so neither is expected.
+- A bundle hanging on a hook, wood poles and round shot have no probe result.
