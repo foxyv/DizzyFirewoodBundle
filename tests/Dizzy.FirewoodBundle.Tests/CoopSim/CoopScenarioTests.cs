@@ -569,7 +569,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         // S5: Coop is a star and sends reliably, so a packet should arrive once. The merge in J-025
         // adds the sender's difference to the count, so one that arrived twice would count twice.
         [Fact]
-        public void S5_AGuestsPacket_ReachesTheHostOnce_AndTheOtherGuestOnce_AndTheSenderNever()
+        public void S5_AGuestsPacket_ReachesTheHostOnce_AndTheHostsAnswerEachGuestOnce()
         {
             var net = new SimNetwork();
             SimPeer one = net.Join("one");
@@ -584,7 +584,8 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
 
             Assert.Equal(1, net.Host.BundlePacketsReceived - hostBefore);
             Assert.Equal(1, two.BundlePacketsReceived);
-            Assert.Equal(0, one.BundlePacketsReceived);
+            // The host settles it and answers everyone, the sender too (J-029).
+            Assert.Equal(1, one.BundlePacketsReceived);
         }
 
         [Fact]

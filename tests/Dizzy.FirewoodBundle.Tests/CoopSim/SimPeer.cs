@@ -287,6 +287,31 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             }
         }
 
+        // The host's reply to a guest's bundle packet: what the bundle is here now.
+        internal void Answer(SimMessage message)
+        {
+            BundleState received;
+            if (!BundleWire.TryRead(new BinaryReader(new MemoryStream(message.Body)), out received))
+                return;
+            SimItem item;
+            if (!Items.TryGetValue(received.Id, out item))
+                return;
+            var state = new BundleState
+            {
+                Id = item.Id,
+                Amount = item.Amount,
+                Health = item.Health,
+                HasFood = item.Kind == SimKind.Sausage,
+                Dried = item.Dried,
+                Stack = item.Extra4,
+                Count = item.Count,
+                BaseCount = CountMerge.Settled,
+            };
+            var stream = new MemoryStream();
+            BundleWire.Write(new BinaryWriter(stream), state);
+            _net.Send(this, "Bundle", new SimMessage { Body = stream.ToArray() });
+        }
+
         private void ReceivePickUp(SimMessage message)
         {
             SimItem item;

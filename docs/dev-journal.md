@@ -352,3 +352,18 @@ Status is one of:
 **Cause.** `CycleLookedAtColor` and `CycleLookedAtWidth` act on the bundle the pointer is held on or looking at. J-005 added the `HeldByOther` check to combine, take from and gather, but not to these two. A third case, `GatherLookedAtHook` (G on loose hooks in an open crate), did not ask whether another player was carrying the crate.
 
 **Fix.** Each checks `CoopBridge.HeldByOther` and does nothing if another player holds the bundle (or the crate). `CoopGuardTests` fails if any other way to change a bundle skips the check; the ways that only touch the player's own hand are listed there with reasons. The simulator has tests that color and width are refused while held and allowed for the holder.
+
+## J-029: Two players changing one bundle at once could end with different bundles
+
+- **Date:** 2026-10-24
+- **Version:** —
+- **Status:** Untested
+- **Found by:** the simulator's shrinker (`RaceHuntTests`). 53 of 400 random runs ended apart; 21 do now. Not yet seen in the game.
+
+**Problem.** Every change sends the whole bundle. If the host and a guest changed the same bundle in the same moment (one recolors, one takes a piece off), each took the other's packet over its own and the two swapped. They stayed different.
+
+**Cause.** The host passed a guest's packet on to the other guests as it was, and nobody decided which of two changes came last.
+
+**Fix.** The host applies a guest's packet, then sends what the bundle now is to everyone, the sender included (`CoopBridge.Receive`; log line `[Coop] Settled <name> <id>: <n> pieces.`). The host's order of changes is the order on every screen. The packet carries a base count of 0, which `CountMerge.Resolve` takes to mean "this stands": the guest's own merge no longer applies to it. The packet format is unchanged (protocol 2).
+
+**Not covered.** Health travels in Coop's own item update, which the host does not settle, so a health change at the same moment as a bundle change can still end apart. Existence races (a destroy or combine against a pick-up) are separate.

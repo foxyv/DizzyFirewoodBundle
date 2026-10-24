@@ -471,14 +471,21 @@ namespace Dizzy.FirewoodBundle
                     return;
                 }
 
-                if (SyncRules.ShouldRelay(IsHost))
-                {
-                    object network = _network.GetValue(null, null);
-                    if (network != null)
-                        _sendToAllExcept.Invoke(network, new object[] { sender, _packetType, Writer(state), true });
-                }
+                ShipItem applied = ApplyRemote(state);
 
-                ApplyRemote(state);
+                // The host settles it and tells everyone, the sender too, so two changes made at
+                // once end the same on every screen. Its own order is the order.
+                if (SyncRules.ShouldArbitrate(IsHost) && applied != null)
+                {
+                    BundleState settled;
+                    object network = _network.GetValue(null, null);
+                    if (network != null && TryRead(applied, out settled))
+                    {
+                        settled.BaseCount = CountMerge.Settled;
+                        _sendToAll.Invoke(network, new object[] { _packetType, Writer(settled) });
+                        Plugin.Log.LogInfo("[Coop] Settled " + applied.name + " " + settled.Id + ": " + settled.Count + " pieces.");
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -494,13 +501,13 @@ namespace Dizzy.FirewoodBundle
             return item;
         }
 
-        private static void ApplyRemote(BundleState state)
+        private static ShipItem ApplyRemote(BundleState state)
         {
             ShipItem item = Find(state.Id);
             if (item == null)
             {
                 Plugin.Log.LogInfo("[Coop] Received bundle " + state.Id + ", which is not here.");
-                return;
+                return null;
             }
             var watch = System.Diagnostics.Stopwatch.StartNew();
             Stall.Mark("applying " + item.name + " from another player");
@@ -515,6 +522,7 @@ namespace Dizzy.FirewoodBundle
             {
                 Stall.Report("Applied " + item.name + " from another player", watch);
             }
+            return item;
         }
 
         private static void ApplyState(ShipItem item, BundleState state)

@@ -74,10 +74,13 @@ namespace Dizzy.FirewoodBundle
     public static class CountMerge
     {
         // The count to end with, or null when nobody else changed it meanwhile and the
-        // packet's own state stands. It is never below one.
+        // packet's own state stands. It is never below one. A base of 0 marks a packet the
+        // host has settled: it stands over whatever is here.
+        public const int Settled = 0;
+
         public static int? Resolve(int localCount, int baseCount, int sentCount)
         {
-            if (localCount == baseCount)
+            if (baseCount == Settled || localCount == baseCount)
                 return null;
             int merged = localCount + (sentCount - baseCount);
             return merged < 1 ? 1 : merged;
@@ -175,6 +178,13 @@ namespace Dizzy.FirewoodBundle
         public static bool ShouldSend(bool multiplayer, bool coopApplyingRemote)
         {
             return multiplayer && !coopApplyingRemote;
+        }
+
+        // The host settles what a guest's bundle change comes to and tells everyone, the
+        // guest included, so that the host's order of changes is the order everywhere.
+        public static bool ShouldArbitrate(bool isHost)
+        {
+            return isHost;
         }
 
         // The host passes a guest's bundle on to everyone else. A guest sends to the host only.
