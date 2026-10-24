@@ -58,7 +58,8 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         public void Disconnect(string name)
         {
             Peers.RemoveAll(p => p.Name == name && !p.IsHost);
-            _queue.RemoveAll(m => m.To == name || m.From == name);
+            // What the host has already passed on is on its own links and still arrives.
+            _queue.RemoveAll(m => m.To == name || (m.From == name && (m.Hop == null || m.Hop == name)));
             if (Rules.CoopDropsLeaversItems)
                 Host.DropItemsHeldBy(name);
         }
@@ -200,6 +201,25 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             {
                 if (--guard == 0)
                     throw new InvalidOperationException("The messages never stopped.");
+                var firsts = new List<int>();
+                var seen = new HashSet<string>();
+                for (int i = 0; i < _queue.Count; i++)
+                {
+                    if (seen.Add(_queue[i].Hop + ">" + _queue[i].To))
+                        firsts.Add(i);
+                }
+                Deliver(firsts[random.Next(firsts.Count)]);
+            }
+        }
+
+        // Delivers up to this many messages, the links taking turns at random, with no end of
+        // frame first: the other peers' changes this frame are still waiting to go out. In the
+        // game Coop reads packets in Update and Bundle Up sends in LateUpdate.
+        public void DeliverSome(int seed, int count)
+        {
+            var random = new Random(seed);
+            for (int n = 0; n < count && _queue.Count > 0; n++)
+            {
                 var firsts = new List<int>();
                 var seen = new HashSet<string>();
                 for (int i = 0; i < _queue.Count; i++)

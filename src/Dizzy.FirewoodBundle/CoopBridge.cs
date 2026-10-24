@@ -607,6 +607,7 @@ namespace Dizzy.FirewoodBundle
             object sync = ItemSync();
             bool coopWasApplying = sync != null && Get(_remoteApplying, sync);
             int localCount = CountNow(item);
+            int countHere = localCount;
             int coopCount;
             if (SetByCoop.TryGetValue(item, out coopCount) && coopCount == localCount)
                 localCount = state.BaseCount;
@@ -635,6 +636,14 @@ namespace Dizzy.FirewoodBundle
                     WriteStack(item, state.Stack);
                 // Someone else changed the count while this was on its way: keep both changes.
                 int? merged = CountMerge.Resolve(localCount, state.BaseCount, state.Count);
+                // A change made here this frame has not gone out: keep it, and send it as a
+                // change from the settled count (J-036).
+                int pendingBase;
+                if (state.BaseCount == CountMerge.Settled && Changed.Contains(item) && Bases.TryGetValue(item, out pendingBase))
+                {
+                    merged = CountMerge.KeepPending(countHere, pendingBase, state.Count);
+                    Bases[item] = state.Count;
+                }
                 if (merged.HasValue)
                 {
                     if (HookLinePieces.IsHook(item))

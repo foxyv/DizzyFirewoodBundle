@@ -19,6 +19,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         Recolor,
         Width,
         Rejoin,
+        EndFrame,   // this player's frame ends, and some messages arrive before the others' do
     }
 
     // One thing one player does. Items are chosen by Pick, a position in that player's items
@@ -137,6 +138,12 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                 net.Disconnect(name);
                 net.Join(name);
                 net.Settle();   // a joiner does nothing until the snapshot is in
+                return;
+            }
+            if (act.Op == Op.EndFrame)
+            {
+                actor.EndFrame();
+                net.DeliverSome(act.Pick, 1 + act.Arg);
                 return;
             }
             if (act.Op == Op.Create)
