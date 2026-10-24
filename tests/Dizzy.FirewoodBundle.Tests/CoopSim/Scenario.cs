@@ -18,6 +18,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         Destroy,
         Recolor,
         Width,
+        Rejoin,
     }
 
     // One thing one player does. Items are chosen by Pick, a position in that player's items
@@ -127,6 +128,17 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             SimPeer actor = net.Peers[act.Actor % net.Peers.Count];
             List<SimItem> items = actor.Items.Values.OrderBy(i => i.Id).ToList();
 
+            if (act.Op == Op.Rejoin)
+            {
+                // A guest drops out and comes back; the host does not.
+                if (actor.IsHost)
+                    return;
+                string name = actor.Name;
+                net.Disconnect(name);
+                net.Join(name);
+                net.Settle();   // a joiner does nothing until the snapshot is in
+                return;
+            }
             if (act.Op == Op.Create)
             {
                 int prefab = Prefabs[act.Pick % Prefabs.Length];

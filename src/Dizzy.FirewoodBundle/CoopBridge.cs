@@ -27,6 +27,11 @@ namespace Dizzy.FirewoodBundle
 
         private static readonly HashSet<ShipItem> Changed = new HashSet<ShipItem>();
         private static readonly Dictionary<ShipItem, int> Bases = new Dictionary<ShipItem, int>();
+
+        // The count Coop's own amount packet gave a bundle. A candle bundle keeps its count in
+        // amount, so a health change on another player's side sets it here without any change
+        // made here (J-032).
+        private static readonly Dictionary<ShipItem, int> SetByCoop = new Dictionary<ShipItem, int>();
         private static readonly DestroyedMemory Destroyed_ = new DestroyedMemory();
         private static bool _present;
         private static bool _applying;
@@ -128,6 +133,9 @@ namespace Dizzy.FirewoodBundle
 
                 // A pick-up of an item that is gone takes the nearest of its prefab (J-007), so
                 // every destroy, ours or another player's, is remembered for a while (J-030).
+                MethodInfo amount = AccessTools.Method(itemSync, "OnRemoteItemAmountChanged");
+                if (amount != null)
+                    harmony.Patch(amount, postfix: new HarmonyMethod(typeof(CoopBridge), nameof(RememberCountSetByCoop)));
                 foreach (string name in new[] { "OnRemoteItemHealthChanged", "OnRemoteItemAmountChanged" })
                 {
                     MethodInfo update = AccessTools.Method(itemSync, name);
@@ -228,7 +236,10 @@ namespace Dizzy.FirewoodBundle
         // told it changed from. The first change in a frame sets it.
         internal static void CountWillChange(ShipItem item)
         {
-            if (!_present || _applying || Loading || item == null || Bases.ContainsKey(item))
+            if (!_present || _applying || Loading || item == null)
+                return;
+            SetByCoop.Remove(item);
+            if (Bases.ContainsKey(item))
                 return;
             Bases[item] = CountNow(item);
         }
@@ -519,6 +530,21 @@ namespace Dizzy.FirewoodBundle
             }
         }
 
+        private static void RememberCountSetByCoop(object[] __args)
+        {
+            try
+            {
+                int id = ItemId(__args);
+                ShipItem item = id != 0 ? Find(id) : null;
+                if (item != null && (FirewoodPieces.KindOf(item) != null || HookLinePieces.IsHook(item)))
+                    SetByCoop[item] = CountNow(item);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning("Could not note a count set by Coop: " + ex);
+            }
+        }
+
         // Health and amount travel in Coop's own packets, which the host only passes on. After
         // it has applied one to a bundle, it settles the bundle like any other change (J-031).
         private static void SettleAfterCoopUpdate(object[] __args)
@@ -576,6 +602,10 @@ namespace Dizzy.FirewoodBundle
             object sync = ItemSync();
             bool coopWasApplying = sync != null && Get(_remoteApplying, sync);
             int localCount = CountNow(item);
+            int coopCount;
+            if (SetByCoop.TryGetValue(item, out coopCount) && coopCount == localCount)
+                localCount = state.BaseCount;
+            SetByCoop.Remove(item);
             _applying = true;
             try
             {

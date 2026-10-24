@@ -53,11 +53,14 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             return peer;
         }
 
-        // A guest leaves. What was on its way to it, and what it had sent, is lost.
+        // A guest leaves. What was on its way to it, and what it had sent, is lost. Coop drops
+        // what the guest held where it was, and tells the others.
         public void Disconnect(string name)
         {
             Peers.RemoveAll(p => p.Name == name && !p.IsHost);
             _queue.RemoveAll(m => m.To == name || m.From == name);
+            if (Rules.CoopDropsLeaversItems)
+                Host.DropItemsHeldBy(name);
         }
 
         // From now on each message is lost with this chance. The join snapshot is not.

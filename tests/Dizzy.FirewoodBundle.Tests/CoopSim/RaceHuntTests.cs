@@ -9,6 +9,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
     // few actions that cause it.
     public class RaceHuntTests
     {
+        private const int Candle = 10;
         private readonly ITestOutputHelper _output;
 
         public RaceHuntTests(ITestOutputHelper output)
@@ -238,6 +239,55 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             }
             _output.WriteLine(unknown + " bundle packets in 400 runs named an item that was not there.");
             Assert.Equal(0, unknown);
+        }
+
+        // J-032: a candle bundle keeps its count in amount, so Coop's health packet (which carries
+        // amount) set the count on the other side. The bundle packet that followed then saw a
+        // count unlike the one it started from and added its own change on top.
+        [Fact]
+        public void J32_ACountAndAHealthChangeInOneFrame_ArriveOnce()
+        {
+            SimNetwork net = Scenario.Start();
+            SimItem bundle = net.Host.Create(Candle, SimKind.Candle, 1, 1);
+            net.Settle();
+
+            net.Host.SetBundle(bundle, 3);
+            net.Host.ChangeHealth(bundle, 0.6f);
+            net.Settle();
+
+            Assert.Equal(3, net.Peers[1].Items[bundle.Id].Count);
+            Assert.Empty(net.Differences());
+        }
+
+        [Fact]
+        public void J32_WithoutIgnoringTheCountCoopSet_ItIsCountedTwice()
+        {
+            SimNetwork net = Scenario.Start(new SimRules { IgnoreCountSetByCoop = false });
+            SimItem bundle = net.Host.Create(Candle, SimKind.Candle, 1, 1);
+            net.Settle();
+
+            net.Host.SetBundle(bundle, 3);
+            net.Host.ChangeHealth(bundle, 0.6f);
+            net.Settle();
+
+            Assert.Equal(5, net.Peers[1].Items[bundle.Id].Count);
+        }
+
+        // Known limit: a guest joins in the same frame as the host changes a count. The join
+        // snapshot already has the change, and the bundle packet that follows adds it again.
+        // The window is one frame.
+        [Fact]
+        public void KnownLimit_AJoinInTheSameFrameAsACountChange_CountsItTwice()
+        {
+            SimNetwork net = Scenario.Start();
+            SimItem bundle = net.Host.Create(Candle, SimKind.Candle, 1, 2);
+            net.Settle();
+
+            net.Host.SetBundle(bundle, 3);
+            SimPeer joiner = net.Join("late");
+            net.Settle();
+
+            Assert.NotEqual(3, joiner.Items[bundle.Id].Count);
         }
 
         // Prints each distinct race. Not an assertion: it is how the races were found.

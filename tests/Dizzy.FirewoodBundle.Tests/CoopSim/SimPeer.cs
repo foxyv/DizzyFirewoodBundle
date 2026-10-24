@@ -12,6 +12,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         private readonly SimNetwork _net;
         private readonly HashSet<SimItem> _changed = new HashSet<SimItem>();
         private readonly Dictionary<int, int> _bases = new Dictionary<int, int>();
+        private readonly Dictionary<int, int> _coopSetCount = new Dictionary<int, int>();   // J-032
         private readonly DestroyedMemory _destroyed = new DestroyedMemory();
         private readonly Dictionary<int, string> _holders = new Dictionary<int, string>();   // the host's record of who holds what
         private int _nextLocalId;
@@ -107,6 +108,8 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
 
         private void CountWillChange(SimItem item)
         {
+            if (!_applying && !Loading)
+                _coopSetCount.Remove(item.Id);
             if (!_applying && !Loading && !_bases.ContainsKey(item.Id))
                 _bases[item.Id] = item.Count;
         }
@@ -268,6 +271,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                         {
                             here.Health = sent.Health;
                             here.Amount = sent.Amount;
+                            _coopSetCount[here.Id] = here.Count;
                         }
                     }
                     break;
@@ -342,6 +346,18 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             _net.Send(this, "Bundle", new SimMessage { Body = stream.ToArray() });
         }
 
+        // The host: a guest left, so what it held is let go where it is.
+        internal void DropItemsHeldBy(string name)
+        {
+            foreach (int id in _holders.Where(h => h.Value == name).Select(h => h.Key).ToList())
+            {
+                _holders.Remove(id);
+                RemoteHeld.Remove(id);
+                SimItem item;
+                _net.Send(this, "Dropped", new SimMessage { Id = id, X = Items.TryGetValue(id, out item) ? item.X : 0 });
+            }
+        }
+
         // The host: approve a guest's pick-up unless someone else holds the item.
         private void ReceivePickRequest(SimMessage message)
         {
@@ -404,6 +420,11 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             }
 
             int local = item.Count;
+            // Coop's own amount packet set this count; no change was made here.
+            int setByCoop;
+            if (Rules.IgnoreCountSetByCoop && _coopSetCount.TryGetValue(item.Id, out setByCoop) && setByCoop == local)
+                local = state.BaseCount;
+            _coopSetCount.Remove(item.Id);
             _applying = true;
             try
             {

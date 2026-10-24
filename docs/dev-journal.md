@@ -397,3 +397,18 @@ Status is one of:
 **Fix.** After Coop's host applies a health or amount change to a bundle, the mod has the host settle the bundle too (`SettleAfterCoopUpdate`, a postfix on `OnRemoteItemHealthChanged` and `OnRemoteItemAmountChanged`). Nothing changes for other items.
 
 **Also.** The simulator let a message the host passed on overtake the host's own earlier messages to the same guest, which a real connection can't do. It now keeps each link in order. That showed the remaining random failures were fewer than thought: 1 of 400 runs now ends apart (the double drop in J-030).
+
+## J-032: A count change and a health change in one frame were counted twice by the other players
+
+- **Date:** 2026-10-24
+- **Version:** —
+- **Status:** Untested
+- **Found by:** the simulator's shrinker, once random play could include a guest dropping out and rejoining. The failing run had no rejoin in it. Not yet seen in the game.
+
+**Problem.** A candle bundle changed in count and in health in the same frame (for example, a piece taken off while the candle burns down) ended with too many pieces on the other players' screens: 1 became 3 on the host and 5 on the guests.
+
+**Cause.** A candle bundle keeps its count in `amount`, and Coop's health packet (`ItemHealthChanged`, then `ItemAmountChanged`) carries `amount`. So Coop set the new count on the other side first. The bundle packet came after, saw a count unlike the one it started from, took that for a change made there too, and added its own change on top (the J-025 merge).
+
+**Fix.** After Coop applies a remote amount to a bundle, the mod remembers the count it set (`SetByCoop`). When a bundle packet arrives and the count is still that, no change was made locally, so the packet stands. A local change clears the note.
+
+**Not covered.** A guest that joins in the same frame as the host changes a count gets the change twice (the snapshot has it, and the bundle packet adds it again). The window is one frame. It is a test, `KnownLimit_AJoinInTheSameFrameAsACountChange_CountsItTwice`.
