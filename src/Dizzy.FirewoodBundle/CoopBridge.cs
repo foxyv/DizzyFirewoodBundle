@@ -512,14 +512,30 @@ namespace Dizzy.FirewoodBundle
                 ShipItem applied = ApplyRemote(state);
 
                 // The host settles it and tells everyone, the sender too, so two changes made at
-                // once end the same on every screen. Its own order is the order.
-                if (SyncRules.ShouldArbitrate(IsHost) && applied != null)
-                    Settle(applied);
+                // once end the same on every screen. Its own order is the order. A bundle the host
+                // does not have cannot be settled, so the packet is passed on as it came, to
+                // everyone but the sender: another player may have it (J-038).
+                if (SyncRules.ShouldArbitrate(IsHost))
+                {
+                    if (applied != null)
+                        Settle(applied);
+                    else
+                        PassOn(sender, state);
+                }
             }
             catch (Exception ex)
             {
                 Plugin.Log.LogWarning("Could not apply a bundle change from another player: " + ex);
             }
+        }
+
+        private static void PassOn<TSender>(TSender sender, BundleState state)
+        {
+            object network = _network.GetValue(null, null);
+            if (network == null)
+                return;
+            _sendToAllExcept.Invoke(network, new object[] { sender, _packetType, Writer(state), true });
+            Plugin.Log.LogInfo("[Coop] Passed on bundle " + state.Id + ", which is not here.");
         }
 
         // Sends what the bundle is here now to everyone, the sender of the change included.

@@ -500,3 +500,16 @@ There is no unit test: it is in the code that talks to Unity.
 **Also fixed in the simulator.** A guest leaving threw away messages the host had already passed on to the other guests. Those are on the host's own links and still arrive. The new act found it.
 
 **Not covered.** The random games compare peers with each other, so a count that is wrong the same way everywhere still passes them; only the J-036 tests check the count itself. A pending change to the tie color or width is still overwritten by a settled packet (the peers end the same, the local change is lost).
+
+## J-038: The host dropped a guest's bundle change for a bundle it did not have
+
+- **Date:** 2026-10-24
+- **Version:** —
+- **Status:** Untested
+- **Found by:** a code review of the co-op work. Reproduced in the simulator by removing a bundle from the host only. Not yet seen in the game.
+
+**Problem.** Since J-029 the host does not pass a guest's bundle packet on; it settles the bundle and sends that. When the host did not have the bundle (an ID that moved in one of Coop's pick-up corrections, or a bundle it had not spawned yet), there was nothing to settle and the packet went no further, so another guest that did have the bundle kept the old count for good.
+
+**Fix.** A packet for a bundle the host does not have is passed on, as it came, to everyone but the sender (`PassOn`, through Coop's `SendToAllExcept`). `SimRules.HostPassesOnUnknown` is the switch, with a twin test.
+
+**Not covered.** The guest it is passed to merges it with its own count as any other guest packet, since the host has settled nothing. If no player has the bundle, nothing happens.
