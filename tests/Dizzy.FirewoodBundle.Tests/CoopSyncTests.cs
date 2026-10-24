@@ -19,6 +19,8 @@ namespace Dizzy.FirewoodBundle.Tests
                 Salted = 0.3f,
                 Spoiled = 0.4f,
                 Stack = StackCode.Encode(4, 2, 1),
+                BaseCount = 5,
+                Count = 4,
             };
         }
 
@@ -50,11 +52,11 @@ namespace Dizzy.FirewoodBundle.Tests
         [Fact]
         public void Wire_IsTheLayoutTheGameAlreadySends()
         {
-            // 1 + 4 + 4 + 4 + 1 + 4 * 5 bytes. A change here breaks play with older versions.
+            // 1 + 4 + 4 + 4 + 1 + 4 * 5 + 4 + 4 bytes. A change here breaks play with older versions.
             var stream = new MemoryStream();
             BundleWire.Write(new BinaryWriter(stream), Sample());
-            Assert.Equal(34, stream.Length);
-            Assert.Equal(1, BundleWire.Protocol);
+            Assert.Equal(42, stream.Length);
+            Assert.Equal(2, BundleWire.Protocol);
         }
 
         [Theory]
@@ -83,6 +85,30 @@ namespace Dizzy.FirewoodBundle.Tests
             Assert.True(StackCode.Decode(StackCode.Encode(1, 0, 0)).IsSingle(8));
             Assert.False(StackCode.Decode(StackCode.Encode(1, 8, 0)).IsSingle(8));
             Assert.False(StackCode.Decode(StackCode.Encode(2, 0, 0)).IsSingle(8));
+        }
+
+        [Theory]
+        [InlineData(4, 4, 3, null)]   // nobody else changed it: the packet's state stands
+        [InlineData(3, 4, 3, 2)]      // we took one too: both changes count
+        [InlineData(5, 4, 3, 4)]      // we added one meanwhile
+        [InlineData(1, 2, 1, 1)]      // never below one
+        [InlineData(2, 5, 4, 1)]
+        public void CountMerge_AddsTheOtherPlayersChange(int local, int baseCount, int sent, int? expected)
+        {
+            Assert.Equal(expected, CountMerge.Resolve(local, baseCount, sent));
+        }
+
+        [Fact]
+        public void DestroyedMemory_ForgetsAfterTheWindow()
+        {
+            var memory = new DestroyedMemory();
+            memory.Remember(7, 100f);
+
+            Assert.True(memory.WasDestroyed(7, 100f));
+            Assert.True(memory.WasDestroyed(7, 100f + DestroyedMemory.Window));
+            Assert.False(memory.WasDestroyed(7, 100f + DestroyedMemory.Window + 1f));
+            Assert.False(memory.WasDestroyed(7, 100f));
+            Assert.False(memory.WasDestroyed(8, 100f));
         }
 
         [Fact]

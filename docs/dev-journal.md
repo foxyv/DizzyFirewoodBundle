@@ -299,3 +299,31 @@ Status is one of:
 **Fix.** The cord rises `MeatBagLayout.HookReach`, 2 cm, above the pin: past the top of the peg, which is 1.55 cm. A test keeps it between the peg's top and what the lanterns reach.
 
 **Second try (the first did not fix it in the game).** The stand was never what decided the height. When a held item is aimed at a table, the game puts its origin `furniturePlaceHeight` above the surface (`GoPointer.LateUpdate`, 0.15 m unless set). A meat bag hangs down from its origin, up to half a metre, so everything below the top chop went through the table. The builder now sets `furniturePlaceHeight` to the distance from the origin down to the foot, plus 1 cm (`MeatBagLayout.PlaceHeight`), and a single chop gets the prefab's value back.
+
+## J-025: Two players taking a piece off one bundle at once make a piece too many
+
+- **Date:** 2026-10-23
+- **Version:** —
+- **Status:** Untested
+- **Found by:** the co-op simulator (`CoopScenarioTests`, X1). Not yet seen in the game.
+
+**Problem.** If two players each take one piece off the same bundle before hearing of the other's change, the bundle ends with one piece fewer than it should. Four candles, two taken off: the bundle showed 3 and the two pieces made 5 in all.
+
+**Cause.** Each bundle packet carried the new state only. Each player sent "3 left" and applied the other's "3 left", so the second take-off was lost.
+
+**Fix.** The packet also carries the count the sender changed from and the count it made (`BundleState.BaseCount`, `Count`; protocol 2). A player whose own count differs from that base changed the bundle meanwhile, so adds the sender's difference to their own count (`CountMerge.Resolve`, never below one). The base is noted the first time a count is written in a frame (`CoopBridge.CountWillChange`). Players on protocol 1 and 2 ignore each other's bundle packets, as for any other version difference.
+
+**Limit.** A lost packet is still never sent again, and a later change no longer corrects the count, because it is now added to it. Before, the next change healed a lost one.
+
+## J-026: A bundle combined while another player picks it up gives its ID to a different bundle
+
+- **Date:** 2026-10-23
+- **Version:** —
+- **Status:** Untested
+- **Found by:** the co-op simulator (X2). Not yet seen in the game.
+
+**Problem.** The host combines bundle B into bundle A while the guest picks B up. The two games then disagree about which item has which ID, and the pieces in A are shown under B's ID.
+
+**Cause.** B is gone when the pick-up reaches the host. For an item it does not know, Coop takes the nearest item of the same prefab and gives it the new ID (as in J-007). That is A.
+
+**Fix.** `FirewoodPieces.Consume`, which destroys a combined bundle, notes its ID (`CoopBridge.Destroyed`). For 30 seconds a pick-up of that ID is ignored (`DestroyedMemory`, checked in the patch on `OnRemoteItemPickedUp`). The guest's copy goes when it hears of the destroy. Only the combine path is covered; other places that destroy an item are not.

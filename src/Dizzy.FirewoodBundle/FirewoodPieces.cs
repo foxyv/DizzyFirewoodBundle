@@ -100,6 +100,7 @@ namespace Dizzy.FirewoodBundle
 
         private static void WriteCount(ShipItem item, int count, int color)
         {
+            CoopBridge.CountWillChange(item);
             BundleKind kind = KindOf(item);
             if (kind != null && !kind.CountInAmount)
             {
@@ -419,6 +420,7 @@ namespace Dizzy.FirewoodBundle
         {
             if (item == null)
                 return;
+            CoopBridge.Destroyed(item);
             Silence(item);
             item.ForceUnlook();
             item.DestroyItem();

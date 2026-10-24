@@ -139,6 +139,7 @@ The simulator runs these in `dotnet test` (`tests/Dizzy.FirewoodBundle.Tests/Coo
 - **S1b:** peers acting at the same moment disagree in about 2 of 20 runs. Last write wins, and the host sees changes in a different order from each guest.
 - **S2:** with 5% of messages lost, 19 of 20 runs disagree. Nothing sends a lost change again.
 - **S3:** with the bundle packet, the spawn announcement or the echo guard off, the stress run goes wrong. With the held check off it does not: the model has no harm to the holder's own copy, so only R3 guards that rule.
-- **X1 (known flaw):** if two players each take a piece off one bundle at the same moment, both say "3 left" and a piece too many exists (5 where there were 4).
-- **X2 (known race):** if the host combines B into A while the guest picks B up, Coop gives B's ID to A, and the peers disagree. Both are recorded as tests that should change when they are fixed.
+- **X1 (fixed, J-025):** two take-offs at once used to leave a piece too many. Packets now carry the count they changed from, and the other side adds the difference.
+- **X2 (fixed, J-026):** a combine racing a pick-up used to give the bundle the other item's ID. The host now ignores a pick-up of a bundle it just combined away.
+- **Still open:** concurrent play still ends in disagreement in about 3 of 20 runs, from other races (for example health and hanging changed at once). A lost message is still never sent again, and since J-025 a later change no longer heals it.
 - **Not yet done:** the 5% loss run for X cases, the Layer 2 rig, and the choice of a rule for X1 and X2.

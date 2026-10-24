@@ -75,6 +75,7 @@ namespace Dizzy.FirewoodBundle
 
         internal static void WriteCount(ShipItem item, int count, bool keepLine)
         {
+            CoopBridge.CountWillChange(item);
             int single = SingleAmount(item);
             if (count <= 1)
                 item.amount = keepLine ? single - 1 : single;

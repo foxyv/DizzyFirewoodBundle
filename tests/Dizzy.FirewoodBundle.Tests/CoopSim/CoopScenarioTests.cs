@@ -261,12 +261,31 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             }
         }
 
+        // R7: each took one off. Two pieces came off, so two are gone from the bundle.
         [Fact]
-        public void X1_TwoTakeOffsAtOnce_KnownFlaw_ACandleAppears()
+        public void X1_TwoTakeOffsAtOnce_NoCandleAppears()
         {
-            // Each side sends "3 left" and the other takes it. Two pieces came off, so one
-            // candle too many exists. This records it; it should become 4 when it is fixed.
-            var net = new SimNetwork();
+            for (int seed = 0; seed < 100; seed++)
+            {
+                var net = new SimNetwork();
+                SimItem bundle = net.Host.Create(Candle, SimKind.Candle, 1, 4);
+                SimPeer guest = net.Join("guest");
+                net.Settle();
+
+                net.Host.TakeOne(bundle);
+                guest.TakeOne(guest.Items[bundle.Id]);
+                net.SettleInterleaved(seed);
+
+                Assert.True(net.Total(net.Host, Candle) == 4, "seed " + seed + ": " + net.Total(net.Host, Candle) + " candles");
+                Assert.Equal(2, net.Host.Items[bundle.Id].Count);
+                Assert.True(net.Differences().Count == 0, "seed " + seed + ": " + net.Summary());
+            }
+        }
+
+        [Fact]
+        public void X1_WithoutTheMerge_ACandleAppears()
+        {
+            var net = new SimNetwork(new SimRules { MergeConcurrentCounts = false });
             SimItem bundle = net.Host.Create(Candle, SimKind.Candle, 1, 4);
             SimPeer guest = net.Join("guest");
             net.Settle();
@@ -279,12 +298,48 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         }
 
         [Fact]
-        public void X2_CombiningWhileTheGuestPicksTheOtherUp_KnownRace_TheBundleTakesItsId()
+        public void X1_ThreePlayersTakingAtOnce_AndAGuestTakingTwice_StillAddUp()
         {
-            // The host combines B into A and destroys B. The guest picks B up at the same
-            // time. The pick-up reaches a host that no longer has B, so Coop gives B's ID to
-            // the nearest item of the prefab, which is A. This records it; fixing it should
-            // make the peers agree.
+            for (int seed = 0; seed < 100; seed++)
+            {
+                var net = new SimNetwork();
+                SimItem bundle = net.Host.Create(Candle, SimKind.Candle, 1, 9);
+                SimPeer one = net.Join("one");
+                SimPeer two = net.Join("two");
+                net.Settle();
+
+                net.Host.TakeOne(bundle);
+                one.TakeOne(one.Items[bundle.Id]);
+                one.EndFrame();
+                one.TakeOne(one.Items[bundle.Id]);
+                two.TakeOne(two.Items[bundle.Id]);
+                net.SettleInterleaved(seed);
+
+                Assert.True(net.Total(net.Host, Candle) == 9, "seed " + seed + ": " + net.Total(net.Host, Candle));
+                Assert.True(net.Differences().Count == 0, "seed " + seed + ": " + net.Summary());
+            }
+        }
+
+        [Fact]
+        public void X1_BothTakeFromABundleOfTwo_NeverGoesBelowOne()
+        {
+            var net = new SimNetwork();
+            SimItem bundle = net.Host.Create(Candle, SimKind.Candle, 1, 2);
+            SimPeer guest = net.Join("guest");
+            net.Settle();
+
+            net.Host.TakeOne(bundle);
+            guest.TakeOne(guest.Items[bundle.Id]);
+            net.Settle();
+
+            Assert.Equal(1, net.Host.Items[bundle.Id].Count);
+            Assert.Empty(net.Differences());
+        }
+
+        // R8: the host combined B into A and the guest picked B up at the same time.
+        [Fact]
+        public void X2_CombiningWhileTheGuestPicksTheOtherUp_TheBundleKeepsItsId()
+        {
             var net = new SimNetwork();
             SimItem a = net.Host.Create(Candle, SimKind.Candle, 1, 3);
             SimItem b = net.Host.Create(Candle, SimKind.Candle, 2, 2);
@@ -295,7 +350,24 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             guest.PickUp(guest.Items[b.Id]);
             net.Settle();
 
+            Assert.Equal(5, net.Host.Items[a.Id].Count);
             Assert.Equal(5, net.Total(net.Host, Candle));
+            Assert.Empty(net.Differences());
+        }
+
+        [Fact]
+        public void X2_WithoutIgnoringIt_TheBundleTakesTheOthersId()
+        {
+            var net = new SimNetwork(new SimRules { IgnorePickUpOfDestroyed = false });
+            SimItem a = net.Host.Create(Candle, SimKind.Candle, 1, 3);
+            SimItem b = net.Host.Create(Candle, SimKind.Candle, 2, 2);
+            SimPeer guest = net.Join("guest");
+            net.Settle();
+
+            net.Host.Combine(a, b);
+            guest.PickUp(guest.Items[b.Id]);
+            net.Settle();
+
             Assert.NotEmpty(net.Differences());
         }
 

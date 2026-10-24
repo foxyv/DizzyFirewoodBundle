@@ -16,6 +16,11 @@ namespace Dizzy.FirewoodBundle
         public float Salted;
         public float Spoiled;
         public float Stack;
+
+        // The count the sender saw before this change, and the count it made. A player who
+        // changed the same bundle meanwhile adds the difference to their own count.
+        public int BaseCount;
+        public int Count;
     }
 
     // The packet that carries a BundleState. A guest sends it to the host, and the host
@@ -23,7 +28,7 @@ namespace Dizzy.FirewoodBundle
     public static class BundleWire
     {
         // Raise this when the layout below changes. A player on another version is ignored.
-        public const byte Protocol = 1;
+        public const byte Protocol = 2;
 
         public static void Write(BinaryWriter writer, BundleState state)
         {
@@ -37,6 +42,8 @@ namespace Dizzy.FirewoodBundle
             writer.Write(state.Salted);
             writer.Write(state.Spoiled);
             writer.Write(state.Stack);
+            writer.Write(state.BaseCount);
+            writer.Write(state.Count);
         }
 
         // False when the packet comes from another version. Nothing else is read then.
@@ -55,7 +62,52 @@ namespace Dizzy.FirewoodBundle
             state.Salted = reader.ReadSingle();
             state.Spoiled = reader.ReadSingle();
             state.Stack = reader.ReadSingle();
+            state.BaseCount = reader.ReadInt32();
+            state.Count = reader.ReadInt32();
             return true;
+        }
+    }
+
+    // Two players take a piece off one bundle at the same moment. Each sends "3 left", and
+    // each would take the other's 3, so a piece too many exists. Each sends what it changed
+    // as well, and the other adds that change to its own count.
+    public static class CountMerge
+    {
+        // The count to end with, or null when nobody else changed it meanwhile and the
+        // packet's own state stands. It is never below one.
+        public static int? Resolve(int localCount, int baseCount, int sentCount)
+        {
+            if (localCount == baseCount)
+                return null;
+            int merged = localCount + (sentCount - baseCount);
+            return merged < 1 ? 1 : merged;
+        }
+    }
+
+    // Bundles this player used up lately, such as one combined into another. Another
+    // player may pick one up before they hear it is gone. Coop would give an item it does
+    // not know the ID of to the nearest item of the same prefab, which is the bundle it
+    // was combined into.
+    public sealed class DestroyedMemory
+    {
+        public const float Window = 30f;
+
+        private readonly System.Collections.Generic.Dictionary<int, float> _at = new System.Collections.Generic.Dictionary<int, float>();
+
+        public void Remember(int id, float now)
+        {
+            _at[id] = now;
+        }
+
+        public bool WasDestroyed(int id, float now)
+        {
+            float when;
+            if (!_at.TryGetValue(id, out when))
+                return false;
+            if (now - when <= Window)
+                return true;
+            _at.Remove(id);
+            return false;
         }
     }
 

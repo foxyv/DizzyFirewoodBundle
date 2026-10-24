@@ -11,6 +11,8 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
     {
         private readonly SimNetwork _net;
         private readonly HashSet<SimItem> _changed = new HashSet<SimItem>();
+        private readonly Dictionary<int, int> _bases = new Dictionary<int, int>();
+        private readonly DestroyedMemory _destroyed = new DestroyedMemory();
         private int _nextLocalId;
         private bool _applying;
 
@@ -80,9 +82,16 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         {
             if (Rules.RefuseWhenHeldByOther && HeldByOther(item))
                 return false;
+            CountWillChange(item);
             item.SetCount(count);
             Note(item);
             return true;
+        }
+
+        private void CountWillChange(SimItem item)
+        {
+            if (!_applying && !Loading && !_bases.ContainsKey(item.Id))
+                _bases[item.Id] = item.Count;
         }
 
         // Takes one piece off a bundle: a new item, a count of one less on the bundle.
@@ -95,6 +104,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
 
             SimItem piece = SpawnPiece(bundle.Prefab, bundle.Kind, bundle.X, bundle.Health, bundle.Dried);
 
+            CountWillChange(bundle);
             bundle.SetCount(bundle.Count - 1);
             Note(bundle);
             return piece;
@@ -116,7 +126,9 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         {
             if (Rules.RefuseWhenHeldByOther && (HeldByOther(into) || HeldByOther(from)))
                 return false;
+            CountWillChange(into);
             into.SetCount(into.Count + from.Count);
+            _destroyed.Remember(from.Id, 0f);
             Items.Remove(from.Id);
             HeldByMe.Remove(from.Id);
             _net.Send(this, "Destroyed", new SimMessage { Id = from.Id });
@@ -127,6 +139,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         // The item is used up, such as a last piece eaten.
         public void Destroy(SimItem item)
         {
+            _destroyed.Remember(item.Id, 0f);
             Items.Remove(item.Id);
             HeldByMe.Remove(item.Id);
             _net.Send(this, "Destroyed", new SimMessage { Id = item.Id });
@@ -180,12 +193,15 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                     HasFood = item.Kind == SimKind.Sausage,
                     Dried = item.Dried,
                     Stack = item.Extra4,
+                    Count = item.Count,
+                    BaseCount = _bases.ContainsKey(item.Id) ? _bases[item.Id] : item.Count,
                 };
                 var stream = new MemoryStream();
                 BundleWire.Write(new BinaryWriter(stream), state);
                 _net.Send(this, "Bundle", new SimMessage { Body = stream.ToArray() });
             }
             _changed.Clear();
+            _bases.Clear();
         }
 
         // ---- Arriving messages ----
@@ -255,6 +271,8 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                 SimItem sent = message.Items[0];
                 if (!Rules.CoopTakesNearestOnUnknownId)
                     return;
+                if (Rules.IgnorePickUpOfDestroyed && _destroyed.WasDestroyed(message.Id, 0f))
+                    return;
                 item = Items.Values
                     .Where(i => i.Prefab == sent.Prefab && !RemoteHeld.Contains(i.Id) && !HeldByMe.Contains(i.Id))
                     .OrderBy(i => Math.Abs(i.X - message.X))
@@ -278,6 +296,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             if (!Items.TryGetValue(state.Id, out item))
                 return;
 
+            int local = item.Count;
             _applying = true;
             try
             {
@@ -287,6 +306,9 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                     item.Dried = state.Dried;
                 if (item.Kind == SimKind.Sausage)
                     item.Extra4 = state.Stack;
+                int? merged = Rules.MergeConcurrentCounts ? CountMerge.Resolve(local, state.BaseCount, state.Count) : null;
+                if (merged.HasValue)
+                    item.SetCount(merged.Value);
                 Rebuild(item);
             }
             finally

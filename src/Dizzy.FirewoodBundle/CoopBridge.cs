@@ -26,6 +26,8 @@ namespace Dizzy.FirewoodBundle
         internal const string CoopGuid = "com.sailwindcoop.mod";
 
         private static readonly HashSet<ShipItem> Changed = new HashSet<ShipItem>();
+        private static readonly Dictionary<ShipItem, int> Bases = new Dictionary<ShipItem, int>();
+        private static readonly DestroyedMemory Destroyed_ = new DestroyedMemory();
         private static bool _present;
         private static bool _applying;
         private static bool _registering;
@@ -151,8 +153,19 @@ namespace Dizzy.FirewoodBundle
 
         // Says which bundle another player picked up or dropped, before and after Coop
         // applies it. Only bundles are named, so the log stays short.
-        private static void TraceBefore(MethodBase __originalMethod, object[] __args, out ShipItem __state)
+        private static bool TraceBefore(MethodBase __originalMethod, object[] __args, out ShipItem __state)
         {
+            if (Traced[__originalMethod] == "picked up")
+            {
+                int id = ItemId(__args);
+                if (id != 0 && Destroyed_.WasDestroyed(id, Time.realtimeSinceStartup))
+                {
+                    Plugin.Log.LogInfo("[Coop] Another player picked up " + id + ", a bundle we just combined. Ignored, so no other bundle takes its ID.");
+                    __state = null;
+                    return false;
+                }
+            }
+
             __state = TracedItem(__args);
             if (__state != null)
             {
@@ -161,6 +174,46 @@ namespace Dizzy.FirewoodBundle
             }
             if (__state != null)
                 Plugin.Log.LogInfo("[Coop] Another player " + Traced[__originalMethod] + " " + __state.name + " (" + FirewoodPieces.CountOf(__state) + "). Applying...");
+            return true;
+        }
+
+        private static int ItemId(object[] args)
+        {
+            try
+            {
+                if (args == null || args.Length == 0 || args[0] == null)
+                    return 0;
+                FieldInfo field = args[0].GetType().GetField("ItemInstanceId");
+                return field != null ? (int)field.GetValue(args[0]) : 0;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        // A bundle was used up here (combined into another). Called before it is destroyed.
+        internal static void Destroyed(ShipItem item)
+        {
+            if (!_present || item == null)
+                return;
+            SaveablePrefab save = item.GetComponent<SaveablePrefab>();
+            if (save != null && save.instanceId != 0)
+                Destroyed_.Remember(save.instanceId, Time.realtimeSinceStartup);
+        }
+
+        // About to change a bundle's count. The count it had is what the other players are
+        // told it changed from. The first change in a frame sets it.
+        internal static void CountWillChange(ShipItem item)
+        {
+            if (!_present || _applying || Loading || item == null || Bases.ContainsKey(item))
+                return;
+            Bases[item] = CountNow(item);
+        }
+
+        private static int CountNow(ShipItem item)
+        {
+            return HookLinePieces.IsHook(item) ? HookLinePieces.CountOf(item) : FirewoodPieces.CountOf(item);
         }
 
         private static void TraceAfter(MethodBase __originalMethod, ShipItem __state)
@@ -365,6 +418,7 @@ namespace Dizzy.FirewoodBundle
             finally
             {
                 Changed.Clear();
+                Bases.Clear();
             }
         }
 
@@ -388,6 +442,9 @@ namespace Dizzy.FirewoodBundle
                 state.Spoiled = food.spoiled;
             }
             state.Stack = SausageStacks.Encode(item);
+            state.Count = CountNow(item);
+            int before;
+            state.BaseCount = Bases.TryGetValue(item, out before) ? before : state.Count;
             return true;
         }
 
@@ -464,6 +521,7 @@ namespace Dizzy.FirewoodBundle
 
             object sync = ItemSync();
             bool coopWasApplying = sync != null && Get(_remoteApplying, sync);
+            int localCount = CountNow(item);
             _applying = true;
             try
             {
@@ -486,6 +544,16 @@ namespace Dizzy.FirewoodBundle
                 BundleKind kind = FirewoodPieces.KindOf(item);
                 if (kind != null && !kind.CountInAmount)
                     WriteStack(item, state.Stack);
+                // Someone else changed the count while this was on its way: keep both changes.
+                int? merged = CountMerge.Resolve(localCount, state.BaseCount, state.Count);
+                if (merged.HasValue)
+                {
+                    if (HookLinePieces.IsHook(item))
+                        HookLinePieces.WriteCount(item, merged.Value, HookLinePieces.IsLine(item));
+                    else if (kind != null)
+                        FirewoodPieces.WriteCount(item, merged.Value);
+                    Plugin.Log.LogInfo("[Coop] " + item.name + " " + state.Id + " was changed here too: " + merged.Value + " pieces.");
+                }
                 Rebuild(item, wasHanging);
             }
             finally
