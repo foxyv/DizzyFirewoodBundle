@@ -485,3 +485,18 @@ There is no unit test: it is in the code that talks to Unity.
 **Problem.** A crewman or another mod taking one piece off a bundle (`TakePieceOff`, `BundleApi.TakeOneFood`) made a loose piece that Coop was never told about, so another player picking the piece up could take the bundle's ID (as in J-007). It also worked on a bundle another player was holding. A lantern using a candle off a bundle (`TakeCandle`, from the crew's lantern refuel) did the same on a held bundle.
 
 **Fix.** `TakePieceOff` announces the new piece (`CoopBridge.Spawned`) and refuses a bundle another player holds. `TakeCandle` does nothing to a bundle another player holds, and still returns true so that the game doesn't use the whole bundle up.
+
+## J-036: A settled packet arriving before the end of the frame lost a change and doubled another
+
+- **Date:** 2026-10-24
+- **Version:** —
+- **Status:** Untested
+- **Found by:** a code review of the co-op work, then reproduced in the simulator with a new `EndFrame` act (one player's frame ends and some messages arrive while the others' changes still wait). Not yet seen in the game.
+
+**Problem.** Bundle Up sends a change at the end of the frame, in LateUpdate, and Coop reads packets in Update. A guest took a piece off a bundle of 5 (4 here, not sent yet), and in the same frame the host's settled packet for its own change (6) arrived. The settled packet stood, so the guest's take was lost, but the loose piece still existed. Then the guest sent 6 as a change from 5, and the host added one more: 7 everywhere instead of 5. Every peer agreed, so the random games' check, which compares peers, could not see it.
+
+**Fix.** When a settled packet arrives while a change made here is still waiting to go out, the change is kept on top of the settled count (`CountMerge.KeepPending`), and the settled count becomes what it is sent as changed from. `SimRules.KeepPendingChange` is the switch, with a twin test.
+
+**Also fixed in the simulator.** A guest leaving threw away messages the host had already passed on to the other guests. Those are on the host's own links and still arrive. The new act found it.
+
+**Not covered.** The random games compare peers with each other, so a count that is wrong the same way everywhere still passes them; only the J-036 tests check the count itself. A pending change to the tie color or width is still overwritten by a settled packet (the peers end the same, the local change is lost).

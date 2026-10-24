@@ -85,6 +85,18 @@ namespace Dizzy.FirewoodBundle
             int merged = localCount + (sentCount - baseCount);
             return merged < 1 ? 1 : merged;
         }
+
+        // A settled packet arrived while a change made here had not gone out yet (it goes at the
+        // end of the frame). The host has not seen that change, so it is kept on top of the
+        // settled count, and the settled count becomes what it is sent as changed from (J-036).
+        // Null when nothing here is waiting to go out.
+        public static int? KeepPending(int localCount, int pendingBase, int settledCount)
+        {
+            if (localCount == pendingBase)
+                return null;
+            int kept = settledCount + (localCount - pendingBase);
+            return kept < 1 ? 1 : kept;
+        }
     }
 
     // Bundles this player used up lately, such as one combined into another. Another

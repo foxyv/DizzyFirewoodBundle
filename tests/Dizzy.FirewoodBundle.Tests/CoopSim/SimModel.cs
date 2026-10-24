@@ -126,6 +126,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         public bool SuppressEchoes = true;            // no send for a rebuild another player's change caused
         public bool MergeConcurrentCounts = true;     // X1: add the other player's change to ours
         public bool IgnorePickUpOfDestroyed = true;   // X2: a pick-up of a bundle just combined away
+        public bool KeepPendingChange = true;         // J-036: a settled packet before our end of frame
     }
 
     public sealed class SimMessage

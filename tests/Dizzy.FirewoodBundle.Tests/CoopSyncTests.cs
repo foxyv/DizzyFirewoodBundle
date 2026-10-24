@@ -133,6 +133,16 @@ namespace Dizzy.FirewoodBundle.Tests
             Assert.Equal(expected, CountMerge.Resolve(local, baseCount, sent));
         }
 
+        [Theory]
+        [InlineData(5, 5, 6, null)]   // nothing waiting here: the settled count stands
+        [InlineData(4, 5, 6, 5)]      // we took one this frame: kept on top of the host's 6
+        [InlineData(7, 5, 3, 5)]      // we added two this frame
+        [InlineData(1, 3, 2, 1)]      // never below one
+        public void CountMerge_KeepsAChangeNotYetSent(int local, int pendingBase, int settled, int? expected)
+        {
+            Assert.Equal(expected, CountMerge.KeepPending(local, pendingBase, settled));
+        }
+
         [Fact]
         public void DestroyedMemory_ForgetsAfterTheWindow()
         {

@@ -306,6 +306,42 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             Assert.NotEqual(3, joiner.Items[bundle.Id].Count);
         }
 
+        // J-036: a guest takes a piece, and the host's settled packet for another change arrives
+        // before the guest's frame ends. The guest's take was lost, and its packet went out as a
+        // change from the old count, so the host added the host's own change a second time.
+        private static SimNetwork TakeWhileTheHostsPacketArrives(SimRules rules)
+        {
+            SimNetwork net = Scenario.Start(rules);
+            SimItem bundle = net.Host.Create(Candle, SimKind.Candle, 1, 5);
+            net.Settle();
+            SimPeer guest = net.Peers[1];
+
+            guest.TakeOne(guest.Items[bundle.Id]);  // 4 here, not sent until the frame ends
+            net.Host.SetBundle(bundle, 6);
+            net.Host.EndFrame();
+            net.DeliverSome(0, 10);                  // the host's packet reaches the guest first
+            net.Settle();
+            return net;
+        }
+
+        [Fact]
+        public void J36_ASettledPacketBeforeTheEndOfFrame_KeepsTheChangeMadeHere()
+        {
+            SimNetwork net = TakeWhileTheHostsPacketArrives(new SimRules());
+            int id = net.Host.Items.Values.Single(i => i.Count > 1).Id;
+            foreach (SimPeer peer in net.Peers)
+                Assert.Equal(5, peer.Items[id].Count);
+            Assert.Empty(net.Differences());
+        }
+
+        [Fact]
+        public void J36_WithoutKeepingThePendingChange_TheCountEndsWrong()
+        {
+            SimNetwork net = TakeWhileTheHostsPacketArrives(new SimRules { KeepPendingChange = false });
+            int id = net.Host.Items.Values.Single(i => i.Count > 1).Id;
+            Assert.NotEqual(5, net.Host.Items[id].Count);
+        }
+
         // The whole point: long random games, up to six players' acts at once, with guests
         // dropping out and rejoining, all end with the peers in agreement. (5000 such runs were
         // clean when this was written; this runs 500.)

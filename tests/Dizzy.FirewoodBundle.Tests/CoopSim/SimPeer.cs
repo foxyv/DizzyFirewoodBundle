@@ -421,6 +421,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             }
 
             int local = item.Count;
+            int countHere = local;
             // Coop's own amount packet set this count; no change was made here.
             int setByCoop;
             if (Rules.IgnoreCountSetByCoop && _coopSetCount.TryGetValue(item.Id, out setByCoop) && setByCoop == local)
@@ -436,6 +437,14 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                 if (item.Kind == SimKind.Sausage)
                     item.Extra4 = state.Stack;
                 int? merged = Rules.MergeConcurrentCounts ? CountMerge.Resolve(local, state.BaseCount, state.Count) : null;
+                // A change made here this frame has not gone out yet (J-036).
+                int pendingBase;
+                if (Rules.KeepPendingChange && state.BaseCount == CountMerge.Settled && _changed.Contains(item)
+                    && _bases.TryGetValue(item.Id, out pendingBase))
+                {
+                    merged = CountMerge.KeepPending(countHere, pendingBase, state.Count);
+                    _bases[item.Id] = state.Count;
+                }
                 if (merged.HasValue)
                     item.SetCount(merged.Value);
                 Rebuild(item);
