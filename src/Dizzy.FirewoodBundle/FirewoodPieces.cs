@@ -776,8 +776,25 @@ namespace Dizzy.FirewoodBundle
 
             lantern.health = full;
             UISoundPlayer.instance.PlayUISound(UISounds.itemInventoryIn, 0.5f, 0.5f);
+            TakeCandle(bundle);
+            return true;
+        }
 
-            int left = CountOf(bundle) - 1;
+        // A lantern uses up one candle of a bundle. The rest stay, tied, where they are.
+        // Returns false for anything that is not a candle bundle, which the game handles.
+        internal static bool TakeCandle(ShipItem bundle)
+        {
+            if (KindOf(bundle) != BundleKind.Candle || !BundleKind.Candle.IsEnabled)
+                return false;
+            int count = CountOf(bundle);
+            if (count <= 1)
+                return false;
+            // Another player is carrying it. True keeps the game from using the whole bundle up,
+            // and nothing else happens.
+            if (CoopBridge.HeldByOther(bundle))
+                return true;
+
+            int left = count - 1;
             WriteCount(bundle, left);
             if (left <= 1)
                 FirewoodBundleBuilder.RestoreSingle(bundle);
@@ -785,6 +802,64 @@ namespace Dizzy.FirewoodBundle
                 FirewoodBundleBuilder.Apply(bundle);
 
             Plugin.Log.LogInfo("Lantern took 1 candle. " + left + " left in the bundle.");
+            return true;
+        }
+
+        // Food that is a bundle and not a single piece: a stack, a bunch, a bag, a rack or a wheel.
+        internal static bool IsBundledFood(ShipItem item)
+        {
+            return item != null && KindOf(item) != null && (CountOf(item) > 1 || IsHungBundle(item));
+        }
+
+        // Takes one piece off a bundle of food that nobody holds, for something other than the
+        // player to use: a steward, or another mod. The piece is a loose single with the
+        // bundle's food state, registered to save, where the bundle is. The bundle drops by one
+        // and is redrawn. Returns null when the item is not a bundle of two or more.
+        internal static ShipItemFood TakePieceOff(ShipItem bundle)
+        {
+            if (!IsBundledFood(bundle) || bundle.held != null || CountOf(bundle) <= 1 || CoopBridge.HeldByOther(bundle))
+                return null;
+
+            ShipItem single = SpawnSingle(bundle);
+            ShipItemFood piece = single != null ? single.GetComponent<ShipItemFood>() : null;
+            if (piece == null)
+            {
+                if (single != null)
+                    Object.Destroy(single.gameObject);
+                return null;
+            }
+
+            SaveablePrefab saveable = single.GetComponent<SaveablePrefab>();
+            SaveablePrefab bundleSave = bundle.GetComponent<SaveablePrefab>();
+            if (saveable != null)
+            {
+                if (bundleSave != null)
+                    saveable.SetParentObject(bundleSave.GetParentObject());
+                saveable.RegisterToSave();
+            }
+            CoopBridge.Spawned(saveable);
+
+            int left = CountOf(bundle) - 1;
+            WriteCount(bundle, left);
+            if (left <= 1 && !IsHungBundle(bundle))
+                FirewoodBundleBuilder.RestoreSingle(bundle);
+            else
+                FirewoodBundleBuilder.Apply(bundle);
+
+            Plugin.Log.LogInfo("Took 1 " + KindOf(bundle).Single + " off a bundle. " + left + " left.");
+            return piece;
+        }
+
+        // Something other than the player makes a bundle of food eat. A bundle is never eaten
+        // whole, so one piece is taken off it and that piece is eaten. A bundle in the player's
+        // hand cannot be eaten at all. Always true for a bundle: the game must not eat it.
+        internal static bool TryServeOne(ShipItem bundle)
+        {
+            if (!IsBundledFood(bundle))
+                return false;
+            ShipItemFood piece = TakePieceOff(bundle);
+            if (piece != null)
+                piece.EatFood();
             return true;
         }
 

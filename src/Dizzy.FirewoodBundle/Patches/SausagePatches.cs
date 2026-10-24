@@ -33,12 +33,19 @@ namespace Dizzy.FirewoodBundle
 
     // A stack is never used as a whole. Each of these would eat, cook, salt, slice
     // or pour the whole stack as if it were one sausage.
+    //
+    // A player can't eat a bundle in their hand. A steward from a crew mod calls EatFood on
+    // whatever it carried over, so a bundle that is not in a hand gives up one piece to be
+    // eaten. Refusing it left the steward fetching the same bundle again and again.
     [HarmonyPatch(typeof(ShipItemFood), nameof(ShipItemFood.EatFood))]
     internal static class SausageEatPatch
     {
         private static bool Prefix(ShipItemFood __instance)
         {
-            return SausageGuard.Allow(__instance);
+            if (SausageGuard.Allow(__instance))
+                return true;
+            FirewoodPieces.TryServeOne(__instance);
+            return false;
         }
     }
 
