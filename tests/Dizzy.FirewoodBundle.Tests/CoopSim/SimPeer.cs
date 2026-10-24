@@ -93,9 +93,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             if (Rules.RefuseWhenHeldByOther && HeldByOther(bundle))
                 return null;
 
-            SimItem piece = SpawnPiece(bundle.Prefab, bundle.Kind, bundle.X);
-            piece.Health = bundle.Health;
-            piece.Dried = bundle.Dried;
+            SimItem piece = SpawnPiece(bundle.Prefab, bundle.Kind, bundle.X, bundle.Health, bundle.Dried);
 
             bundle.SetCount(bundle.Count - 1);
             Note(bundle);
@@ -104,9 +102,9 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
 
         // A new loose piece made by Bundle Up, not by the game: one taken off a bundle, a log
         // from a stove, a hook off a line. Coop must be told about it.
-        public SimItem SpawnPiece(int prefab, SimKind kind, double x)
+        public SimItem SpawnPiece(int prefab, SimKind kind, double x, float health = 1f, float dried = 0f)
         {
-            var piece = new SimItem { Id = _nextLocalId++, Prefab = prefab, Kind = kind, X = x };
+            var piece = new SimItem { Id = _nextLocalId++, Prefab = prefab, Kind = kind, X = x, Health = health, Dried = dried };
             Items[piece.Id] = piece;
             if (SyncRules.ShouldAnnounceSpawn(Rules.AnnounceSpawn, _applying, Multiplayer))
                 _net.Send(this, "Spawned", new SimMessage { Items = new List<SimItem> { piece.Clone() } });
@@ -120,8 +118,43 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                 return false;
             into.SetCount(into.Count + from.Count);
             Items.Remove(from.Id);
+            HeldByMe.Remove(from.Id);
+            _net.Send(this, "Destroyed", new SimMessage { Id = from.Id });
             Note(into);
             return true;
+        }
+
+        // The item is used up, such as a last piece eaten.
+        public void Destroy(SimItem item)
+        {
+            Items.Remove(item.Id);
+            HeldByMe.Remove(item.Id);
+            _net.Send(this, "Destroyed", new SimMessage { Id = item.Id });
+        }
+
+        // Hangs a food bundle on a hook, or takes it off.
+        public bool Hang(SimItem item, bool hung)
+        {
+            if (Rules.RefuseWhenHeldByOther && HeldByOther(item))
+                return false;
+            item.SetHung(hung);
+            Note(item);
+            return true;
+        }
+
+        // The game loads a save. Every bundle is rebuilt, and none of that is sent.
+        public void Reload()
+        {
+            Loading = true;
+            try
+            {
+                foreach (SimItem item in Items.Values)
+                    Note(item);
+            }
+            finally
+            {
+                Loading = false;
+            }
         }
 
         private void Note(SimItem item)
@@ -198,6 +231,12 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                         dropped.X = message.X;
                         Rebuild(dropped);
                     }
+                    break;
+
+                case "Destroyed":
+                    Items.Remove(message.Id);
+                    RemoteHeld.Remove(message.Id);
+                    HeldByMe.Remove(message.Id);
                     break;
 
                 case "Bundle":

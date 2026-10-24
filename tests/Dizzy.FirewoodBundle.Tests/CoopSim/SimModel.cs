@@ -40,12 +40,31 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             return (SimItem)MemberwiseClone();
         }
 
+        // A food bundle that hangs from a hook. It stays a bundle at a count of one.
+        public bool Hung
+        {
+            get { return Kind == SimKind.Sausage && StackCode.Decode(Extra4).Width == HangWidth; }
+        }
+
+        public const int HangWidth = 8;
+
         public void SetCount(int count)
         {
             if (Kind == SimKind.Candle)
+            {
                 Amount = count;
-            else
-                Extra4 = count <= 1 ? 0f : StackCode.Encode(count, 0, 0);
+                return;
+            }
+            int width = Hung ? HangWidth : 0;
+            Extra4 = count <= 1 && width != HangWidth ? 0f : StackCode.Encode(count, width, 0);
+        }
+
+        public void SetHung(bool hung)
+        {
+            if (Kind != SimKind.Sausage)
+                return;
+            int count = Count;
+            Extra4 = hung ? StackCode.Encode(count, HangWidth, 0) : (count <= 1 ? 0f : StackCode.Encode(count, 0, 0));
         }
 
         public override string ToString()

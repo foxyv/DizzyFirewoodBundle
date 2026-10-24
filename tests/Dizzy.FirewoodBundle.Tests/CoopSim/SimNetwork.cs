@@ -16,6 +16,9 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         public readonly List<SimPeer> Peers = new List<SimPeer>();
         public int Sent;
         public int SentBundlePackets;
+        private int _peersEver = 1;
+        private Random _loss;
+        private double _lossRate;
 
         public SimNetwork(SimRules rules = null)
         {
@@ -35,7 +38,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         // A guest joins. Coop sends the host's whole world once, with every field.
         public SimPeer Join(string name)
         {
-            var peer = new SimPeer(this, name, false, Peers.Count);
+            var peer = new SimPeer(this, name, false, _peersEver++);
             Peers.Add(peer);
             _queue.Add(new SimMessage
             {
@@ -45,6 +48,25 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                 Items = Host.Items.Values.Select(i => i.Clone()).ToList(),
             });
             return peer;
+        }
+
+        // A guest leaves. What was on its way to it, and what it had sent, is lost.
+        public void Disconnect(string name)
+        {
+            Peers.RemoveAll(p => p.Name == name && !p.IsHost);
+            _queue.RemoveAll(m => m.To == name || m.From == name);
+        }
+
+        // From now on each message is lost with this chance. The join snapshot is not.
+        public void LoseMessages(double rate, int seed)
+        {
+            _lossRate = rate;
+            _loss = new Random(seed);
+        }
+
+        private bool Lost(SimMessage m)
+        {
+            return _loss != null && m.Type != "Snapshot" && _loss.NextDouble() < _lossRate;
         }
 
         // From a peer: a host sends to every guest, a guest to the host.
@@ -62,7 +84,8 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                     continue;
                 if (!from.IsHost && !to.IsHost)
                     continue;
-                _queue.Add(Copy(message, to.Name));
+                if (!Lost(message))
+                    _queue.Add(Copy(message, to.Name));
             }
         }
 
@@ -90,10 +113,14 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         // Delivers the message that has waited longest. False when none is waiting.
         public bool Step()
         {
-            if (_queue.Count == 0)
-                return false;
-            SimMessage message = _queue[0];
-            _queue.RemoveAt(0);
+            return _queue.Count != 0 && Deliver(0);
+        }
+
+        // Delivers the message at this place in the queue.
+        private bool Deliver(int index)
+        {
+            SimMessage message = _queue[index];
+            _queue.RemoveAt(index);
             SimPeer to = Peers.FirstOrDefault(p => p.Name == message.To);
             if (to == null)
                 return true;
@@ -107,10 +134,52 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                 {
                     if (other.IsHost || other.Name == message.From)
                         continue;
-                    _queue.Add(Copy(message, other.Name));
+                    if (!Lost(message))
+                        _queue.Add(Copy(message, other.Name));
                 }
             }
             return true;
+        }
+
+        // Delivers everything, with the links taking turns at random. Messages on one link
+        // keep their order, as they do over a reliable connection, but one link may run well
+        // ahead of another. The same seed gives the same turns.
+        public void FlushInterleaved(int seed)
+        {
+            var random = new Random(seed);
+            int guard = 1000000;
+            while (_queue.Count > 0)
+            {
+                if (--guard == 0)
+                    throw new InvalidOperationException("The messages never stopped.");
+                var firsts = new List<int>();
+                var seen = new HashSet<string>();
+                for (int i = 0; i < _queue.Count; i++)
+                {
+                    if (seen.Add(_queue[i].From + ">" + _queue[i].To))
+                        firsts.Add(i);
+                }
+                Deliver(firsts[random.Next(firsts.Count)]);
+            }
+        }
+
+        // Like Settle, with the links interleaved.
+        public void SettleInterleaved(int seed)
+        {
+            for (int round = 0; round < 50; round++)
+            {
+                EndFrame();
+                if (_queue.Count == 0)
+                    return;
+                FlushInterleaved(seed + round);
+            }
+            throw new InvalidOperationException("The peers keep sending each other changes.");
+        }
+
+        // The pieces of a prefab across all items, as one peer counts them.
+        public int Total(SimPeer peer, int prefab)
+        {
+            return peer.Items.Values.Where(i => i.Prefab == prefab).Sum(i => i.Count);
         }
 
         public void Flush()
@@ -167,13 +236,20 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                         found.Add("#" + id + " is only on " + (hasA ? "host" : peer.Name));
                         continue;
                     }
-                    if (a.Prefab != b.Prefab || a.Count != b.Count || a.Health != b.Health || a.Dried != b.Dried)
+                    if (a.Prefab != b.Prefab || a.Count != b.Count || a.Health != b.Health || a.Dried != b.Dried || a.Hung != b.Hung)
                         found.Add("#" + id + " differs: host " + a + " / " + peer.Name + " " + b);
                     else if (Math.Abs(a.X - b.X) > 0.0001)
                         found.Add("#" + id + " is in two places: host " + a.X + " / " + peer.Name + " " + b.X);
                 }
             }
             return found;
+        }
+
+        // The differences on one line, for a failure message.
+        public string Summary()
+        {
+            List<string> found = Differences();
+            return found.Count + " differences: " + string.Join(" | ", found.Take(6));
         }
 
         public string Report()

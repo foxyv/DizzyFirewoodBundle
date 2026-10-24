@@ -129,3 +129,16 @@ For each kind (firewood, candles, line, lure line, sausages, cheese, apples and 
 - Is the Coop version in the October pack the one the journal describes? Pin the version in the simulator (`CoopRules.Version`).
 - Layer 2 needs two copies of the game on one PC. Check this before building the probe plugin.
 - X1 and X2 have no agreed answer yet. The tests should first record what happens. Pick the rule after that.
+
+## Findings from steps 3 and 4
+
+The simulator runs these in `dotnet test` (`tests/Dizzy.FirewoodBundle.Tests/CoopSim`). Links keep their order, as a reliable connection does, but take turns at random.
+
+- **R1 to R6, F, J:** pass, and each fix has a twin test that goes wrong with the fix off.
+- **S1:** 10,000 actions, one at a time, across a host and two guests: the peers always agree.
+- **S1b:** peers acting at the same moment disagree in about 2 of 20 runs. Last write wins, and the host sees changes in a different order from each guest.
+- **S2:** with 5% of messages lost, 19 of 20 runs disagree. Nothing sends a lost change again.
+- **S3:** with the bundle packet, the spawn announcement or the echo guard off, the stress run goes wrong. With the held check off it does not: the model has no harm to the holder's own copy, so only R3 guards that rule.
+- **X1 (known flaw):** if two players each take a piece off one bundle at the same moment, both say "3 left" and a piece too many exists (5 where there were 4).
+- **X2 (known race):** if the host combines B into A while the guest picks B up, Coop gives B's ID to A, and the peers disagree. Both are recorded as tests that should change when they are fixed.
+- **Not yet done:** the 5% loss run for X cases, the Layer 2 rig, and the choice of a rule for X1 and X2.
