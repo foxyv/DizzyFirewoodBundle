@@ -8,6 +8,7 @@ namespace Dizzy.FirewoodBundle
         internal static ConfigEntry<bool> Enabled;
         internal static ConfigEntry<int> MaxPieces;
         internal static ConfigEntry<KeyCode> ColorKey;
+        internal static ConfigEntry<KeyCode> ProbeKey;
         internal static ConfigEntry<string>[] TieColorNames;
         internal static ConfigEntry<Color>[] TieColorValues;
         internal static ConfigEntry<bool> CandlesEnabled;
@@ -453,6 +454,12 @@ namespace Dizzy.FirewoodBundle
                 "Tie Color Key",
                 KeyCode.Backslash,
                 "Hold or look at a firewood or candle bundle, or a bag, and press this key to tie it with the next color. Firewood starts on its natural cord, candles on the first color, and bag nets on the sixth.");
+
+            ProbeKey = config.Bind(
+                "Developer",
+                "Co-op Probe Key",
+                KeyCode.None,
+                "For testing. Hold or look at a bundle and press this key to run a self-test of the co-op code on it, with no other player. The result is in the log under [Probe]. The bundle is put back as it was. Needs Sailwind Coop installed. None turns it off.");
 
             BindTieColors(config);
 

@@ -599,10 +599,29 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         }
 
         [Fact]
-        public void S5_ADuplicatedPacket_WouldBeCountedTwice_KnownLimit()
+        public void S5_ADuplicatedGuestPacket_WouldBeCountedTwice_KnownLimit()
         {
             // Not something Coop does. If it ever did, the count would drift, and the fix would be
             // a sequence number in the packet (protocol 3).
+            var net = new SimNetwork();
+            SimItem candle = net.Host.Create(Candle, SimKind.Candle, 1, 4);
+            SimPeer guest = net.Join("guest");
+            net.Settle();
+            net.DuplicateMessages(1.0, 1);
+
+            guest.TakeOne(guest.Items[candle.Id]);
+            guest.EndFrame();
+            net.Settle();
+
+            // A guest's packet arriving twice takes two pieces. Both peers agree on the wrong count.
+            Assert.Equal(2, candle.Count);
+            Assert.Equal(2, guest.Items[candle.Id].Count);
+        }
+
+        // J-033: the host's own packets stand, so a duplicate of one changes nothing more.
+        [Fact]
+        public void S5_ADuplicatedHostPacket_IsHarmless()
+        {
             var net = new SimNetwork();
             SimItem candle = net.Host.Create(Candle, SimKind.Candle, 1, 4);
             SimPeer guest = net.Join("guest");
@@ -613,7 +632,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             net.Settle();
 
             Assert.Equal(3, candle.Count);
-            Assert.Equal(2, guest.Items[candle.Id].Count);
+            Assert.Equal(3, guest.Items[candle.Id].Count);
         }
 
         // S4: a change goes out once, however many pieces it was made of.

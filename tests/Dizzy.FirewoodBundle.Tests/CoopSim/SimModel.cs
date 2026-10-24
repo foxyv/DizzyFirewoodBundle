@@ -112,6 +112,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         public bool CoopTakesNearestOnUnknownId = true; // C6
         public bool HostSettlesHealth = true;         // J-031
         public bool RememberRemoteDestroys = true;    // J-030
+        public bool HostPacketsStand = true;          // J-033
         public bool IgnoreCountSetByCoop = true;      // J-032
         public bool CoopDropsLeaversItems = true;     // C: on a player leaving, their items drop where they were
         public bool CoopArbitratesPickUp = true;      // Coop 0.4.0: a guest asks the host, which approves or denies

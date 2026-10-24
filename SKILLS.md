@@ -120,4 +120,8 @@ py -3 scripts/coop_log_check.py HOST_LogOutput.log GUEST_LogOutput.log
 py -3 scripts/coop_log_check.py HOST_LogOutput.log GUEST_LogOutput.log --stall HOST_BundleUp-stall.log GUEST_BundleUp-stall.log
 ```
 
+### Co-op probe (one game, no second player)
+
+With Sailwind Coop installed, set `Co-op Probe Key` (section Developer, off by default) in the Bundle Up config, hold or look at a bundle in a game and press the key. `CoopProbe.cs` feeds the bundle packets the simulator uses, as if another player had sent them, through the real `ApplyState` and merge, and writes `[Probe] PASS` / `[Probe] FAIL` lines and a summary to `LogOutput.log`. It checks the wire round trip, applying a packet to its own state, another player's count, the J-025 merge, a settled packet standing over a local change, a count Coop set (J-032) and that the bundle is put back as it was. Nothing is sent. It needs no session, so it runs the real mod code that the simulator only models. Try it on a firewood bundle, a candle bundle, a food stack and a hook line.
+
 It prints each problem (`LOST`, `DIFFERS`, `UNKNOWN`, `WARNING`, `ERROR`, `STALL`) and exits 1 if there is one. Put what it finds in the journal entry of the fix. Its tests run with `py -3 -m unittest test_coop_log_check` from `scripts/`.

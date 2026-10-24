@@ -21,7 +21,7 @@ namespace Dizzy.FirewoodBundle
     //
     // A guest sends to the host, and the host passes it on. Everything is found by
     // reflection: without Coop loaded, none of this runs.
-    internal static class CoopBridge
+    internal static partial class CoopBridge
     {
         internal const string CoopGuid = "com.sailwindcoop.mod";
 
@@ -478,6 +478,11 @@ namespace Dizzy.FirewoodBundle
             state.Count = CountNow(item);
             int before;
             state.BaseCount = Bases.TryGetValue(item, out before) ? before : state.Count;
+            // The host's packet stands: its settled answer to a guest's change follows it, so
+            // there is nothing for a guest to merge. A guest that joined just now already has
+            // the change in its snapshot and must not add it again (J-033).
+            if (IsHost)
+                state.BaseCount = CountMerge.Settled;
             return true;
         }
 

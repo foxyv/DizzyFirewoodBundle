@@ -6,6 +6,7 @@ A test for two players (host and guest). Two game copies cannot run on one PC, s
 
 - Both players install the same build of this branch (`feature/coop-sim`), and the same Sailwind Coop (0.4.0).
 - Both play in the same save, in the same port, with a candle bundle, a food stack and a crate of hooks ready (or make them as you go).
+- Optional, alone first: run the co-op probe (see SKILLS.md, "Co-op probe") on one bundle of each kind. Any `[Probe] FAIL` is worth fixing before the session.
 - Delete or move `BepInEx/LogOutput.log` before launching, so the log holds only this session.
 - Say the step number out loud when you start each step. The log has no step markers, so note the time as well.
 

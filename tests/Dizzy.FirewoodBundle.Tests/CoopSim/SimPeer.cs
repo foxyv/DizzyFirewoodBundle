@@ -234,7 +234,8 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                     Dried = item.Dried,
                     Stack = item.Extra4,
                     Count = item.Count,
-                    BaseCount = _bases.ContainsKey(item.Id) ? _bases[item.Id] : item.Count,
+                    // The host's packet stands: its settled answer to a guest's change follows it.
+                    BaseCount = IsHost && Rules.HostPacketsStand ? CountMerge.Settled : _bases.ContainsKey(item.Id) ? _bases[item.Id] : item.Count,
                 };
                 var stream = new MemoryStream();
                 BundleWire.Write(new BinaryWriter(stream), state);

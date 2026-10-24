@@ -251,11 +251,12 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             SimItem bundle = net.Host.Create(Candle, SimKind.Candle, 1, 1);
             net.Settle();
 
-            net.Host.SetBundle(bundle, 3);
-            net.Host.ChangeHealth(bundle, 0.6f);
+            SimPeer guest = net.Peers[1];
+            guest.SetBundle(guest.Items[bundle.Id], 3);
+            guest.ChangeHealth(guest.Items[bundle.Id], 0.6f);
             net.Settle();
 
-            Assert.Equal(3, net.Peers[1].Items[bundle.Id].Count);
+            Assert.Equal(3, net.Host.Items[bundle.Id].Count);
             Assert.Empty(net.Differences());
         }
 
@@ -266,18 +267,18 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             SimItem bundle = net.Host.Create(Candle, SimKind.Candle, 1, 1);
             net.Settle();
 
-            net.Host.SetBundle(bundle, 3);
-            net.Host.ChangeHealth(bundle, 0.6f);
+            SimPeer guest = net.Peers[1];
+            guest.SetBundle(guest.Items[bundle.Id], 3);
+            guest.ChangeHealth(guest.Items[bundle.Id], 0.6f);
             net.Settle();
 
-            Assert.Equal(5, net.Peers[1].Items[bundle.Id].Count);
+            Assert.Equal(5, net.Host.Items[bundle.Id].Count);
         }
 
-        // Known limit: a guest joins in the same frame as the host changes a count. The join
-        // snapshot already has the change, and the bundle packet that follows adds it again.
-        // The window is one frame.
+        // J-033: a guest joins in the same frame as the host changes a count. The join snapshot
+        // already has the change; the host's packet used to add it again.
         [Fact]
-        public void KnownLimit_AJoinInTheSameFrameAsACountChange_CountsItTwice()
+        public void J33_AJoinInTheSameFrameAsACountChange_CountsItOnce()
         {
             SimNetwork net = Scenario.Start();
             SimItem bundle = net.Host.Create(Candle, SimKind.Candle, 1, 2);
@@ -287,7 +288,36 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             SimPeer joiner = net.Join("late");
             net.Settle();
 
+            Assert.Equal(3, joiner.Items[bundle.Id].Count);
+            Assert.Empty(net.Differences());
+        }
+
+        [Fact]
+        public void J33_WithoutTheHostsPacketsStanding_ItIsCountedTwice()
+        {
+            SimNetwork net = Scenario.Start(new SimRules { HostPacketsStand = false });
+            SimItem bundle = net.Host.Create(Candle, SimKind.Candle, 1, 2);
+            net.Settle();
+
+            net.Host.SetBundle(bundle, 3);
+            SimPeer joiner = net.Join("late");
+            net.Settle();
+
             Assert.NotEqual(3, joiner.Items[bundle.Id].Count);
+        }
+
+        // The whole point: long random games, up to six players' acts at once, with guests
+        // dropping out and rejoining, all end with the peers in agreement. (5000 such runs were
+        // clean when this was written; this runs 500.)
+        [Fact]
+        public void LongRandomGames_WithRejoins_AlwaysEndInAgreement()
+        {
+            for (int seed = 0; seed < 500; seed++)
+            {
+                Scenario s = Scenario.Generate(seed, 60, 6);
+                if (s.Fails())
+                    Assert.True(false, "seed " + seed + " ends apart. Shrunk:" + System.Environment.NewLine + s.Shrink());
+            }
         }
 
         // Prints each distinct race. Not an assertion: it is how the races were found.

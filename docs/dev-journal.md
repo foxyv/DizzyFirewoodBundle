@@ -412,3 +412,30 @@ Status is one of:
 **Fix.** After Coop applies a remote amount to a bundle, the mod remembers the count it set (`SetByCoop`). When a bundle packet arrives and the count is still that, no change was made locally, so the packet stands. A local change clears the note.
 
 **Not covered.** A guest that joins in the same frame as the host changes a count gets the change twice (the snapshot has it, and the bundle packet adds it again). The window is one frame. It is a test, `KnownLimit_AJoinInTheSameFrameAsACountChange_CountsItTwice`.
+
+## J-033: A guest joining in the same frame as a count change got the change twice
+
+- **Date:** 2026-10-24
+- **Version:** —
+- **Status:** Untested
+- **Found by:** the simulator's random play with guests dropping out and rejoining. Not yet seen in the game.
+
+**Problem.** If a guest joined in the frame the host changed a bundle's count, the guest ended with the change twice (a count of 2 changed to 3 showed as 4).
+
+**Cause.** The join snapshot already had the new count. The host's bundle packet followed and carried the change as a difference from the old count, which the guest added to what it already had (the J-025 merge).
+
+**Fix.** The host's own bundle packets now carry a base count of 0, which `CountMerge.Resolve` takes as "this stands". The merge was only needed to keep two players' simultaneous changes both; since J-029 the host settles every guest change after the host's packet, so a guest has nothing left to merge on the host's packets. The guest's packets to the host still carry their base.
+
+**Also.** A duplicated host packet is now harmless (a duplicated guest packet still counts twice, as before). 5000 random games of 60 steps, up to 6 acts at once, with rejoins, all end in agreement; 500 of them run as a test.
+
+## J-034: A co-op probe that runs the real packet code in one game
+
+- **Date:** 2026-10-24
+- **Version:** —
+- **Status:** Diagnostic
+
+**What.** `CoopProbe.cs` adds a developer key (`Co-op Probe Key`, off by default). Held or looked at, a bundle gets the packets the simulator uses, as if another player had sent them, through the real `ApplyState` and merge. It logs `[Probe] PASS` or `FAIL` for each check and a summary, then puts the bundle back as it was. Nothing is sent.
+
+**Why.** The simulator models Coop and the mod's rules, but not the mod's code or the game's objects. Two copies of the game can't run on one PC. This runs the mod's own packet code on a real bundle with no second player. It does not test Coop's own sync or the network.
+
+**Not tried yet.** It has been built and the simulator tests still pass, but it has not been run in the game.

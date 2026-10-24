@@ -101,6 +101,7 @@ namespace Dizzy.FirewoodBundle
             FirewoodPieces.CycleLookedAtColor();
             SausageStacks.CycleLookedAtWidth();
             CoopBridge.Flush();
+            CoopBridge.ProbeIfAsked();
             Stall.Frame();
             Stall.Mark("end of LateUpdate (Bundle Up)");
         }
