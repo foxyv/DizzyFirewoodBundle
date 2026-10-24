@@ -733,7 +733,8 @@ namespace Dizzy.FirewoodBundle
             if (!IsSingleton(hook))
                 return false;
             ShipItemCrate crate = OpenCrateHolding(hook);
-            return crate != null && LooseHooks(crate, KindOf(hook)) >= 2;
+            // Another player carrying the crate is changing what is in it.
+            return crate != null && !CoopBridge.HeldByOther(crate) && LooseHooks(crate, KindOf(hook)) >= 2;
         }
 
         private static ShipItem LookedAtHook()

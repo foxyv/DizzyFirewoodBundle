@@ -25,14 +25,26 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         public float Extra4;
         public float Dried;
 
+        // A candle bundle keeps its count and tie color in amount, like the game: count + color * 1000.
+        // A food bundle keeps count, width and color in extraValue4.
         public int Count
         {
             get
             {
                 if (Kind == SimKind.Candle)
-                    return Math.Max(1, (int)Amount);
+                    return Math.Max(1, (int)Amount % 1000);
                 return Math.Max(1, StackCode.Decode(Extra4).Count);
             }
+        }
+
+        public int Color
+        {
+            get { return Kind == SimKind.Candle ? (int)Amount / 1000 : StackCode.Decode(Extra4).Color; }
+        }
+
+        public int Width
+        {
+            get { return Kind == SimKind.Candle ? 0 : StackCode.Decode(Extra4).Width; }
         }
 
         public SimItem Clone()
@@ -52,11 +64,29 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         {
             if (Kind == SimKind.Candle)
             {
-                Amount = count;
+                Amount = count <= 1 ? 1 : count + Color * 1000;
                 return;
             }
-            int width = Hung ? HangWidth : 0;
-            Extra4 = count <= 1 && width != HangWidth ? 0f : StackCode.Encode(count, width, 0);
+            int width = Hung ? HangWidth : Width;
+            Extra4 = count <= 1 && width != HangWidth ? 0f : StackCode.Encode(count, width, Color);
+        }
+
+        // The tie color of a bundle. A single has none.
+        public void SetColor(int color)
+        {
+            if (Count <= 1)
+                return;
+            if (Kind == SimKind.Candle)
+                Amount = Count + color * 1000;
+            else
+                Extra4 = StackCode.Encode(Count, Width, color);
+        }
+
+        // The width a stack of food is drawn at. Candles have none.
+        public void SetWidth(int width)
+        {
+            if (Kind == SimKind.Sausage && Count > 1)
+                Extra4 = StackCode.Encode(Count, width, Color);
         }
 
         public void SetHung(bool hung)
@@ -64,7 +94,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             if (Kind != SimKind.Sausage)
                 return;
             int count = Count;
-            Extra4 = hung ? StackCode.Encode(count, HangWidth, 0) : (count <= 1 ? 0f : StackCode.Encode(count, 0, 0));
+            Extra4 = hung ? StackCode.Encode(count, HangWidth, Color) : (count <= 1 ? 0f : StackCode.Encode(count, 0, Color));
         }
 
         public override string ToString()

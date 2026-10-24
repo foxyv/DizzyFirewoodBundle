@@ -236,7 +236,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                         found.Add("#" + id + " is only on " + (hasA ? "host" : peer.Name));
                         continue;
                     }
-                    if (a.Prefab != b.Prefab || a.Count != b.Count || a.Health != b.Health || a.Dried != b.Dried || a.Hung != b.Hung)
+                    if (a.Prefab != b.Prefab || a.Count != b.Count || a.Health != b.Health || a.Dried != b.Dried || a.Hung != b.Hung || a.Color != b.Color || a.Width != b.Width)
                         found.Add("#" + id + " differs: host " + a + " / " + peer.Name + " " + b);
                     else if (Math.Abs(a.X - b.X) > 0.0001)
                         found.Add("#" + id + " is in two places: host " + a.X + " / " + peer.Name + " " + b.X);

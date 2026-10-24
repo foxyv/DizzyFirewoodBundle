@@ -339,3 +339,16 @@ Status is one of:
 **Log change.** After applying a bundle from another player, the mod now logs `[Coop] Applied <name> <id>: <n> pieces.` The checker compares final counts with it. Both players need this build.
 
 **Why.** Two copies of the game can't be run on one PC (Coop needs a Steam account for each player), so a real session with another player is the only test of Coop's own sync. This makes a session's result readable.
+
+## J-028: You can change the color or width of a bundle another player is holding
+
+- **Date:** 2026-10-23
+- **Version:** —
+- **Status:** Untested
+- **Found by:** `CoopGuardTests`, which reads the source for ways to change a bundle that never ask `HeldByOther`. Not yet seen in the game.
+
+**Problem.** In co-op, pointing at a bundle in the other player's hands and pressing the tie color key or the stack width key changed it. The bundle was rebuilt in their hands, as in J-005.
+
+**Cause.** `CycleLookedAtColor` and `CycleLookedAtWidth` act on the bundle the pointer is held on or looking at. J-005 added the `HeldByOther` check to combine, take from and gather, but not to these two. A third case, `GatherLookedAtHook` (G on loose hooks in an open crate), did not ask whether another player was carrying the crate.
+
+**Fix.** Each checks `CoopBridge.HeldByOther` and does nothing if another player holds the bundle (or the crate). `CoopGuardTests` fails if any other way to change a bundle skips the check; the ways that only touch the player's own hand are listed there with reasons. The simulator has tests that color and width are refused while held and allowed for the holder.

@@ -422,6 +422,8 @@ namespace Dizzy.FirewoodBundle
                     stack = pointer.GetPointedAtItem();
                 if (!IsStack(stack) || IsHanging(stack) || FirewoodPieces.KindOf(stack) != BundleKind.Sausage)
                     continue;
+                if (CoopBridge.HeldByOther(stack))
+                    continue;
 
                 StackState state = stack.GetComponent<StackState>();
                 state.Width = state.Width >= PileWidth ? 0 : state.Width + 1;

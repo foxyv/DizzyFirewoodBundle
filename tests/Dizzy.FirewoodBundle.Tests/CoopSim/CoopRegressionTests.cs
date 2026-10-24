@@ -235,6 +235,121 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             Assert.False(net.Host.Items.ContainsKey(bundle.Id));
         }
 
+        // R9: the tie color and width keys changed a bundle another player was holding.
+        [Theory]
+        [InlineData(SimKind.Candle)]
+        [InlineData(SimKind.Sausage)]
+        public void R9_TieColor_IsRefusedWhileTheGuestHoldsTheBundle(SimKind kind)
+        {
+            var net = new SimNetwork();
+            SimItem bundle = net.Host.Create(kind == SimKind.Candle ? Candle : Sausage, kind, 1, 4);
+            SimPeer guest = net.Join("guest");
+            net.Settle();
+            guest.PickUp(guest.Items[bundle.Id]);
+            net.Settle();
+
+            Assert.False(net.Host.Recolor(bundle, 2));
+            net.Settle();
+
+            Assert.Equal(0, bundle.Color);
+            Assert.Equal(0, guest.Items[bundle.Id].Color);
+            Assert.Empty(net.Differences());
+        }
+
+        [Fact]
+        public void R9_StackWidth_IsRefusedWhileTheGuestHoldsTheStack()
+        {
+            var net = new SimNetwork();
+            SimItem stack = net.Host.Create(Sausage, SimKind.Sausage, 1, 4);
+            SimPeer guest = net.Join("guest");
+            net.Settle();
+            guest.PickUp(guest.Items[stack.Id]);
+            net.Settle();
+
+            Assert.False(net.Host.CycleWidth(stack, 3));
+            net.Settle();
+
+            Assert.Equal(0, stack.Width);
+            Assert.Equal(0, guest.Items[stack.Id].Width);
+        }
+
+        [Theory]
+        [InlineData(SimKind.Candle)]
+        [InlineData(SimKind.Sausage)]
+        public void R9_TheHolderMayRecolorTheirOwnBundle_AndTheOtherSeesIt(SimKind kind)
+        {
+            var net = new SimNetwork();
+            SimItem bundle = net.Host.Create(kind == SimKind.Candle ? Candle : Sausage, kind, 1, 4);
+            SimPeer guest = net.Join("guest");
+            net.Settle();
+            guest.PickUp(guest.Items[bundle.Id]);
+            net.Settle();
+
+            Assert.True(guest.Recolor(guest.Items[bundle.Id], 2));
+            net.Settle();
+
+            Assert.Equal(2, bundle.Color);
+            Assert.Empty(net.Differences());
+        }
+
+        [Theory]
+        [InlineData(SimKind.Candle)]
+        [InlineData(SimKind.Sausage)]
+        public void R9_ABundleNobodyHolds_IsRecoloredEverywhere_AndAfterTheDropAgain(SimKind kind)
+        {
+            var net = new SimNetwork();
+            SimItem bundle = net.Host.Create(kind == SimKind.Candle ? Candle : Sausage, kind, 1, 4);
+            SimPeer guest = net.Join("guest");
+            net.Settle();
+
+            Assert.True(net.Host.Recolor(bundle, 1));
+            net.Settle();
+            Assert.Equal(1, guest.Items[bundle.Id].Color);
+            Assert.Equal(4, guest.Items[bundle.Id].Count);
+
+            guest.PickUp(guest.Items[bundle.Id]);
+            net.Settle();
+            Assert.False(net.Host.Recolor(bundle, 2));
+            guest.Drop(guest.Items[bundle.Id], 3);
+            net.Settle();
+
+            Assert.True(net.Host.Recolor(bundle, 2));
+            net.Settle();
+            Assert.Equal(2, guest.Items[bundle.Id].Color);
+            Assert.Empty(net.Differences());
+        }
+
+        [Fact]
+        public void R9_WithoutTheCheck_TheHostRecolorsWhatTheGuestHolds()
+        {
+            var net = new SimNetwork(new SimRules { RefuseWhenHeldByOther = false });
+            SimItem bundle = net.Host.Create(Candle, SimKind.Candle, 1, 4);
+            SimPeer guest = net.Join("guest");
+            net.Settle();
+            guest.PickUp(guest.Items[bundle.Id]);
+            net.Settle();
+
+            Assert.True(net.Host.Recolor(bundle, 2));
+        }
+
+        [Fact]
+        public void R9_TheColorSurvivesATakeOff()
+        {
+            var net = new SimNetwork();
+            SimItem bundle = net.Host.Create(Candle, SimKind.Candle, 1, 4);
+            SimPeer guest = net.Join("guest");
+            net.Settle();
+            net.Host.Recolor(bundle, 3);
+            net.Settle();
+
+            net.Host.TakeOne(bundle);
+            net.Settle();
+
+            Assert.Equal(3, guest.Items[bundle.Id].Color);
+            Assert.Equal(3, guest.Items[bundle.Id].Count);
+            Assert.Empty(net.Differences());
+        }
+
         // R6 (J-010): a drop of a bundle redrew it on the other side, and the redraw went back.
         [Fact]
         public void R6_DropOfABundle_IsAppliedOnceWithNoEcho()

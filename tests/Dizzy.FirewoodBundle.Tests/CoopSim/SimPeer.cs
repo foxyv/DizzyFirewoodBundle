@@ -94,6 +94,26 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                 _bases[item.Id] = item.Count;
         }
 
+        // The tie color key, on the bundle in your hand or the one you look at.
+        public bool Recolor(SimItem item, int color)
+        {
+            if (Rules.RefuseWhenHeldByOther && HeldByOther(item))
+                return false;
+            item.SetColor(color);
+            Note(item);
+            return true;
+        }
+
+        // The width key, on a stack of food.
+        public bool CycleWidth(SimItem item, int width)
+        {
+            if (Rules.RefuseWhenHeldByOther && HeldByOther(item))
+                return false;
+            item.SetWidth(width);
+            Note(item);
+            return true;
+        }
+
         // Takes one piece off a bundle: a new item, a count of one less on the bundle.
         public SimItem TakeOne(SimItem bundle)
         {

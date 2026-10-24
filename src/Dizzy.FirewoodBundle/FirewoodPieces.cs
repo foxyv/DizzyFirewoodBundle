@@ -135,6 +135,8 @@ namespace Dizzy.FirewoodBundle
                     bundle = pointer.GetPointedAtItem();
                 if (!IsActive(bundle) || KindOf(bundle).ColorCount == 0)
                     continue;
+                if (CoopBridge.HeldByOther(bundle))
+                    continue;
                 if (CountOf(bundle) <= 1 && !KindOf(bundle).Hangs)
                     continue;
 
