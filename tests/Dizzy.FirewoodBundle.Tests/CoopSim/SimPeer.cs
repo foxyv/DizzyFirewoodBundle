@@ -93,19 +93,40 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             if (Rules.RefuseWhenHeldByOther && HeldByOther(bundle))
                 return null;
 
-            var piece = new SimItem { Id = _nextLocalId++, Prefab = bundle.Prefab, Kind = bundle.Kind, X = bundle.X, Health = bundle.Health, Dried = bundle.Dried };
-            Items[piece.Id] = piece;
-            if (SyncRules.ShouldAnnounceSpawn(Rules.AnnounceSpawn, _applying, Multiplayer))
-                _net.Send(this, "Spawned", new SimMessage { Items = new List<SimItem> { piece.Clone() } });
+            SimItem piece = SpawnPiece(bundle.Prefab, bundle.Kind, bundle.X);
+            piece.Health = bundle.Health;
+            piece.Dried = bundle.Dried;
 
             bundle.SetCount(bundle.Count - 1);
             Note(bundle);
             return piece;
         }
 
+        // A new loose piece made by Bundle Up, not by the game: one taken off a bundle, a log
+        // from a stove, a hook off a line. Coop must be told about it.
+        public SimItem SpawnPiece(int prefab, SimKind kind, double x)
+        {
+            var piece = new SimItem { Id = _nextLocalId++, Prefab = prefab, Kind = kind, X = x };
+            Items[piece.Id] = piece;
+            if (SyncRules.ShouldAnnounceSpawn(Rules.AnnounceSpawn, _applying, Multiplayer))
+                _net.Send(this, "Spawned", new SimMessage { Items = new List<SimItem> { piece.Clone() } });
+            return piece;
+        }
+
+        // Puts one bundle into another. Refused if either is held by another player.
+        public bool Combine(SimItem into, SimItem from)
+        {
+            if (Rules.RefuseWhenHeldByOther && (HeldByOther(into) || HeldByOther(from)))
+                return false;
+            into.SetCount(into.Count + from.Count);
+            Items.Remove(from.Id);
+            Note(into);
+            return true;
+        }
+
         private void Note(SimItem item)
         {
-            if (SyncRules.ShouldNote(Rules.SendBundlePacket, _applying, Loading))
+            if (SyncRules.ShouldNote(Rules.SendBundlePacket, _applying && Rules.SuppressEchoes, Loading))
                 _changed.Add(item);
         }
 
@@ -173,7 +194,10 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                     RemoteHeld.Remove(message.Id);
                     SimItem dropped;
                     if (Items.TryGetValue(message.Id, out dropped))
+                    {
                         dropped.X = message.X;
+                        Rebuild(dropped);
+                    }
                     break;
 
                 case "Bundle":
@@ -224,10 +248,27 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
                     item.Dried = state.Dried;
                 if (item.Kind == SimKind.Sausage)
                     item.Extra4 = state.Stack;
+                Rebuild(item);
             }
             finally
             {
                 _applying = false;
+            }
+        }
+
+        // Applying another player's change redraws the bundle, and a redraw is a change.
+        // It must not go back out.
+        private void Rebuild(SimItem item)
+        {
+            bool was = _applying;
+            _applying = true;
+            try
+            {
+                Note(item);
+            }
+            finally
+            {
+                _applying = was;
             }
         }
     }

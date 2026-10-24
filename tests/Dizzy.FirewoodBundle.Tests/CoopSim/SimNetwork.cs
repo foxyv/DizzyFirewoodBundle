@@ -123,6 +123,20 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             }
         }
 
+        // Frames and deliveries until nothing is left to send. Throws when it never settles,
+        // which is how a message loop shows up.
+        public void Settle()
+        {
+            for (int round = 0; round < 50; round++)
+            {
+                EndFrame();
+                if (_queue.Count == 0)
+                    return;
+                Flush();
+            }
+            throw new InvalidOperationException("The peers keep sending each other changes.");
+        }
+
         // Changes the order messages will arrive in. The same seed gives the same order.
         public void Shuffle(int seed)
         {

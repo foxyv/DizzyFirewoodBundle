@@ -67,6 +67,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         public bool SendBundlePacket = true;          // packet 249
         public bool AnnounceSpawn = true;             // Spawned() after RegisterToSave
         public bool RefuseWhenHeldByOther = true;     // combine, take from, gather
+        public bool SuppressEchoes = true;            // no send for a rebuild another player's change caused
     }
 
     public sealed class SimMessage
