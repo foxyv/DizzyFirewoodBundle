@@ -130,6 +130,42 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             Assert.True(apart > 0);
         }
 
+        // J-037: Coop sends health, then amount. The host settled after each, and the first
+        // answer carried the old amount. One health change must make one settle, with the new one.
+        [Fact]
+        public void J37_AHealthChange_MakesOneSettleWithTheNewAmount()
+        {
+            SimNetwork net = Scenario.Start();
+            SimItem bundle = net.Host.Create(10, SimKind.Candle, 1, 4);
+            net.Settle();
+            SimPeer guest = net.Peers[1];
+            SimPeer other = net.Peers[2];
+            int before = other.BundlePacketsReceived;
+
+            guest.Items[bundle.Id].Amount = 7f;
+            guest.ChangeHealth(guest.Items[bundle.Id], 0.3f);
+            net.Settle();
+
+            Assert.Equal(1, other.BundlePacketsReceived - before);
+            Assert.Equal(7f, net.Host.Items[bundle.Id].Amount);
+            Assert.Empty(net.Differences());
+        }
+
+        [Fact]
+        public void J37_WithoutWaitingForTheAmount_TheHostSettlesTwice()
+        {
+            SimNetwork net = Scenario.Start(new SimRules { SettleOnlyAfterAmount = false });
+            SimItem bundle = net.Host.Create(10, SimKind.Candle, 1, 4);
+            net.Settle();
+            SimPeer other = net.Peers[2];
+            int before = other.BundlePacketsReceived;
+
+            net.Peers[1].ChangeHealth(net.Peers[1].Items[bundle.Id], 0.3f);
+            net.Settle();
+
+            Assert.Equal(2, other.BundlePacketsReceived - before);
+        }
+
         // J-030: one guest used an item up while another picked it up. The host heard of the
         // destroy first, then the request to pick up an item that is gone, and gave that ID to
         // the nearest item of the same prefab. Remembering remote destroys stops that.

@@ -500,3 +500,16 @@ There is no unit test: it is in the code that talks to Unity.
 **Also fixed in the simulator.** A guest leaving threw away messages the host had already passed on to the other guests. Those are on the host's own links and still arrive. The new act found it.
 
 **Not covered.** The random games compare peers with each other, so a count that is wrong the same way everywhere still passes them; only the J-036 tests check the count itself. A pending change to the tie color or width is still overwritten by a settled packet (the peers end the same, the local change is lost).
+
+## J-037: The host settled a candle health change twice, the first time with the old amount
+
+- **Date:** 2026-10-24
+- **Version:** —
+- **Status:** Untested
+- **Found by:** a code review of the co-op work, reading Coop's `OnLocalItemHealthChanged`. Not yet seen in the game.
+
+**Problem.** Coop sends a health change as an `ItemHealthChanged` packet and then an `ItemAmountChanged` packet. The host settled the bundle after each. The first settle went out before the new amount had arrived, so every guest, the sender included, briefly rebuilt a candle bundle (whose count lives in `amount`) at the old count, and then again at the new one.
+
+**Fix.** Only the amount packet settles. Every health change is followed by an amount packet on the same reliable link, so nothing is missed. The simulator now sends the two as separate messages (`ItemHealth`, `ItemAmount`); `SimRules.SettleOnlyAfterAmount` is the switch, and its twin shows two settles without it.
+
+**Not covered.** If Coop ever sends health without amount, a health-only change would no longer be settled by the host. Coop 0.4.0 does not.
