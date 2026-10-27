@@ -513,3 +513,16 @@ There is no unit test: it is in the code that talks to Unity.
 **Fix.** Only the amount packet settles. Every health change is followed by an amount packet on the same reliable link, so nothing is missed. The simulator now sends the two as separate messages (`ItemHealth`, `ItemAmount`); `SimRules.SettleOnlyAfterAmount` is the switch, and its twin shows two settles without it.
 
 **Not covered.** If Coop ever sends health without amount, a health-only change would no longer be settled by the host. Coop 0.4.0 does not.
+
+## J-039: Putting a hook from a held line on a rod dropped the line
+
+- **Date:** 2026-10-27
+- **Version:** —
+- **Status:** Untested
+- **Found by:** a playtest report (holding a hook line and clicking an empty rod destroyed the line and threw the player off the boat). The Player.log shows Better Fishing attaching twice in one click, the second time as a lure swap.
+
+**Problem.** `GoPointer` drops the held item whenever the clicked button's `OnItemClick` returns true. The rod prefix returned true after giving the rod one hook, so the game dropped the whole line at the player's feet. In the same click Better Fishing handled a second hook handed over and, with the rod already hooked, swapped lures: it destroyed what it was handed and spawned a lure at the player, who was pushed off the boat.
+
+**Fix.** The prefix always returns false, because the line stays in hand and `GiveOneToRod` drops it itself when the last hook goes. A rod that took a hook this frame refuses another one in the same frame, so a second call in the click cannot reach Better Fishing.
+
+**Not covered.** I could not see where the second hook came from, so the same-frame refusal is a guard. It is not proven to be the cause. No test: the click path needs the game.

@@ -328,6 +328,15 @@ namespace Dizzy.FirewoodBundle
             return GiveOneToRod(held, rod);
         }
 
+        private static ShipItemFishingRod _lastGivenRod;
+        private static int _lastGivenFrame = -1;
+
+        // A rod that took a hook this frame is not handed another one in the same frame.
+        internal static bool JustGaveTo(ShipItemFishingRod rod)
+        {
+            return rod != null && rod == _lastGivenRod && Time.frameCount == _lastGivenFrame;
+        }
+
         internal static bool GiveOneToRod(ShipItem line, ShipItemFishingRod rod)
         {
             if (!FirewoodBundleConfig.HooksAreEnabled || !IsLine(line) || rod == null || rod.health > 0f)
@@ -362,6 +371,9 @@ namespace Dizzy.FirewoodBundle
                 if (update != null)
                     update.Invoke(rod, null);
             }
+
+            _lastGivenRod = rod;
+            _lastGivenFrame = Time.frameCount;
 
             if (count <= 1)
             {
