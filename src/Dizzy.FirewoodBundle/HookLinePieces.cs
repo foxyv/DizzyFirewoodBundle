@@ -332,11 +332,36 @@ namespace Dizzy.FirewoodBundle
         // Fishing's own prefix on the rod click still ran for a held line, after the rod had
         // taken one hook, and swapped lures: it destroyed the line and put a lure in the
         // player's hand. This keeps it away from a line, and from a rod that just took a hook.
+        //
+        // Patching its method compiles it, which runs the static setup of its Lure class, and
+        // that needs the game's prefab list. At plugin start that throws and stops the rest of
+        // the patching. So the patch waits for the first hook given to a rod.
         internal static void PatchBetterFishing(Harmony harmony)
         {
-            if (!BetterFishingLoaded || harmony == null)
-                return;
+            _betterFishingHarmony = harmony;
+        }
 
+        private static Harmony _betterFishingHarmony;
+        private static bool _betterFishingPatched;
+
+        private static void EnsureBetterFishingPatched()
+        {
+            if (_betterFishingPatched || _betterFishingHarmony == null || !BetterFishingLoaded)
+                return;
+            _betterFishingPatched = true;
+
+            try
+            {
+                PatchBetterFishingNow(_betterFishingHarmony);
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogError("Could not patch Better Fishing's rod click: " + ex);
+            }
+        }
+
+        private static void PatchBetterFishingNow(Harmony harmony)
+        {
             System.Type type = AccessTools.TypeByName("BetterFishing.LurePatches+ShipItemFishingRodPatches");
             MethodInfo attach = type != null ? AccessTools.Method(type, "AttachHookType") : null;
             if (attach == null)
@@ -378,6 +403,8 @@ namespace Dizzy.FirewoodBundle
             int count = CountOf(line);
             if (count < 1)
                 return false;
+
+            EnsureBetterFishingPatched();
 
             // Better Fishing replaces how a rod takes a hook: it shows the hook or lure it
             // was handed and remembers which one. So with that mod the rod is handed a real
