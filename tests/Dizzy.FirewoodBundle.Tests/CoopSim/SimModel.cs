@@ -111,6 +111,7 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
         public bool CoopSetsHeldPointer = true;       // C5
         public bool CoopTakesNearestOnUnknownId = true; // C6
         public bool HostSettlesHealth = true;         // J-031
+        public bool SettleOnlyAfterAmount = true;     // J-037: not after the health packet, which has the old amount
         public bool RememberRemoteDestroys = true;    // J-030
         public bool HostPacketsStand = true;          // J-033
         public bool IgnoreCountSetByCoop = true;      // J-032

@@ -136,12 +136,11 @@ namespace Dizzy.FirewoodBundle
                 MethodInfo amount = AccessTools.Method(itemSync, "OnRemoteItemAmountChanged");
                 if (amount != null)
                     harmony.Patch(amount, postfix: new HarmonyMethod(typeof(CoopBridge), nameof(RememberCountSetByCoop)));
-                foreach (string name in new[] { "OnRemoteItemHealthChanged", "OnRemoteItemAmountChanged" })
-                {
-                    MethodInfo update = AccessTools.Method(itemSync, name);
-                    if (update != null)
-                        harmony.Patch(update, postfix: new HarmonyMethod(typeof(CoopBridge), nameof(SettleAfterCoopUpdate)));
-                }
+                // Coop sends every health change as a health packet and then an amount packet, in
+                // that order. Settling after the health packet would answer with the old amount,
+                // so only the amount packet settles (J-037).
+                if (amount != null)
+                    harmony.Patch(amount, postfix: new HarmonyMethod(typeof(CoopBridge), nameof(SettleAfterCoopUpdate)));
                 foreach (string name in new[] { "OnRemoteItemDestroyed", "OnLocalItemDestroyed" })
                 {
                     MethodInfo destroyed = AccessTools.Method(itemSync, name);
@@ -567,7 +566,8 @@ namespace Dizzy.FirewoodBundle
         }
 
         // Health and amount travel in Coop's own packets, which the host only passes on. After
-        // it has applied one to a bundle, it settles the bundle like any other change (J-031).
+        // it has applied the amount, which always follows a health change, it settles the bundle
+        // like any other change (J-031, J-037).
         private static void SettleAfterCoopUpdate(object[] __args)
         {
             try

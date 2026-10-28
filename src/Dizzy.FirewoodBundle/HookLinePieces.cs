@@ -328,6 +328,106 @@ namespace Dizzy.FirewoodBundle
             return GiveOneToRod(held, rod);
         }
 
+        // Harmony runs every prefix on a method, even after one returns false. So Better
+        // Fishing's own prefix on the rod click still ran for a held line, after the rod had
+        // taken one hook, and swapped lures: it destroyed the line and put a lure in the
+        // player's hand. This keeps it away from a line, and from a rod that just took a hook.
+        //
+        // Patching its method compiles it, which runs the static setup of its Lure class, and
+        // that needs the game's prefab list. At plugin start that throws and stops the rest of
+        // the patching. So the patch waits for the first hook given to a rod.
+        internal static void PatchBetterFishing(Harmony harmony)
+        {
+            _betterFishingHarmony = harmony;
+        }
+
+        private static Harmony _betterFishingHarmony;
+        private static bool _betterFishingPatched;
+
+        private static void EnsureBetterFishingPatched()
+        {
+            if (_betterFishingPatched || _betterFishingHarmony == null || !BetterFishingLoaded)
+                return;
+            _betterFishingPatched = true;
+
+            try
+            {
+                PatchBetterFishingNow(_betterFishingHarmony);
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogError("Could not patch Better Fishing's rod click: " + ex);
+            }
+        }
+
+        private static void PatchBetterFishingNow(Harmony harmony)
+        {
+            System.Type type = AccessTools.TypeByName("BetterFishing.LurePatches+ShipItemFishingRodPatches");
+            MethodInfo attach = type != null ? AccessTools.Method(type, "AttachHookType") : null;
+            if (attach == null)
+            {
+                Plugin.Log.LogWarning("Better Fishing is loaded, but its rod click patch was not found. Putting a hook from a line on a rod may destroy the line.");
+                return;
+            }
+
+            harmony.Patch(attach, prefix: new HarmonyMethod(typeof(HookLinePieces), nameof(KeepLineAwayFromBetterFishing)));
+        }
+
+        private static bool KeepLineAwayFromBetterFishing(PickupableItem heldItem, ShipItemFishingRod __instance, ref bool __result)
+        {
+            if (!FirewoodBundleConfig.HooksAreEnabled)
+                return true;
+            if (!JustGaveTo(__instance) && !IsLine(FirewoodPieces.AsShip(heldItem)))
+                return true;
+            __result = false;
+            return false;
+        }
+
+        // GoPointer drops the held item when the pick-up key comes up with nothing under the
+        // crosshair, once the item has been held for a moment (timerAfterPickup of 0.66). After
+        // a rod takes a hook, the game no longer treats it as a target for the held line, so
+        // letting go of the click that gave the hook would drop the line. For that one release
+        // the timer is held below the limit. It is not touched on any other drop.
+        private static ShipItem _keptLine;
+        private static float _keptAt;
+        private static FieldInfo _pickupTimer;
+
+        internal static void KeepHeldAfterGive(GoPointer pointer)
+        {
+            if (_keptLine == null)
+                return;
+            if (pointer == null || _keptLine.held != pointer || Time.unscaledTime - _keptAt > 5f)
+            {
+                _keptLine = null;
+                return;
+            }
+
+            bool released = GameInput.GetKeyUp(InputName.PickUp) || GameInput.GetKeyUp(InputName.Throw);
+            bool down = GameInput.GetKey(InputName.PickUp) || GameInput.GetKey(InputName.Throw);
+            if (!released && !down && Time.unscaledTime - _keptAt > 0.3f)
+            {
+                _keptLine = null;
+                return;
+            }
+
+            if (_pickupTimer == null)
+                _pickupTimer = AccessTools.Field(typeof(GoPointer), "timerAfterPickup");
+            if (_pickupTimer != null)
+                _pickupTimer.SetValue(pointer, 0.5f);
+            if (released)
+                _keptLine = null;
+        }
+
+        private static ShipItemFishingRod _lastGivenRod;
+        private static int _lastGivenFrame = -1;
+
+        // A rod that took a hook is not handed anything else in that frame or the next, whether
+        // it is a line or a single hook, so Better Fishing cannot read it as a lure swap.
+        internal static bool JustGaveTo(ShipItemFishingRod rod)
+        {
+            return rod != null && rod == _lastGivenRod && Time.frameCount - _lastGivenFrame <= 1;
+        }
+
         internal static bool GiveOneToRod(ShipItem line, ShipItemFishingRod rod)
         {
             if (!FirewoodBundleConfig.HooksAreEnabled || !IsLine(line) || rod == null || rod.health > 0f)
@@ -338,6 +438,8 @@ namespace Dizzy.FirewoodBundle
             int count = CountOf(line);
             if (count < 1)
                 return false;
+
+            EnsureBetterFishingPatched();
 
             // Better Fishing replaces how a rod takes a hook: it shows the hook or lure it
             // was handed and remembers which one. So with that mod the rod is handed a real
@@ -362,6 +464,9 @@ namespace Dizzy.FirewoodBundle
                 if (update != null)
                     update.Invoke(rod, null);
             }
+
+            _lastGivenRod = rod;
+            _lastGivenFrame = Time.frameCount;
 
             if (count <= 1)
             {
@@ -394,6 +499,8 @@ namespace Dizzy.FirewoodBundle
                 HookLineBuilder.Apply(line);
             }
 
+            _keptLine = line;
+            _keptAt = Time.unscaledTime;
             Plugin.Log.LogInfo("Put 1 fishing hook on the rod. " + left + " left on the line.");
             return true;
         }

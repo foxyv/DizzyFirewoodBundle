@@ -185,7 +185,8 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
 
             // Health and amount go in Coop's own packet; once it has passed that on, the host
             // settles the bundle (J-031).
-            if (message.Type == "ItemUpdate" && to.IsHost && Rules.HostSettlesHealth && SyncRules.ShouldArbitrate(true))
+            bool settles = message.Type == "ItemAmount" || (message.Type == "ItemHealth" && !Rules.SettleOnlyAfterAmount);
+            if (settles && to.IsHost && Rules.HostSettlesHealth && SyncRules.ShouldArbitrate(true))
                 foreach (SimItem sent in message.Items)
                     to.Answer(sent.Id);
             return true;

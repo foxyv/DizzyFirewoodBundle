@@ -303,7 +303,7 @@ Status is one of:
 ## J-023: A crewman uses up a whole candle bundle for one lantern
 
 - **Date:** 2026-10-22
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 
 **Problem.** With the Virtual Crew mod, a crewman refilling a lantern could use every candle in a bundle.
@@ -315,7 +315,7 @@ Status is one of:
 ## J-024: The crew's steward fetches a food bundle again and again
 
 - **Date:** 2026-10-22
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Report:** Exocet, on Discord, about the Crew mod (Virtual Crew 0.2.3 is the version on this PC)
 
@@ -334,7 +334,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-025: Two players taking a piece off one bundle at once make a piece too many
 
 - **Date:** 2026-10-23
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** the co-op simulator (`CoopScenarioTests`, X1). Not yet seen in the game.
 
@@ -349,7 +349,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-026: A bundle combined while another player picks it up gives its ID to a different bundle
 
 - **Date:** 2026-10-23
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** the co-op simulator (X2). Not yet seen in the game.
 
@@ -362,7 +362,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-027: A way to check two players' logs for bundles that went out of step
 
 - **Date:** 2026-10-23
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Diagnostic
 
 **What.** `scripts/coop_log_check.py` reads the host's and the guest's `LogOutput.log` from one co-op session and reports bundles that were sent and never received, bundles whose last count differs between the two players, bundles sent to a player who does not have them, warnings and errors from Dizzy Bundle Up, and (with `--stall`) stall reports. It lists merges of simultaneous changes and ignored pick-ups as notes. `scripts/test_coop_log_check.py` tests it.
@@ -374,7 +374,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-028: You can change the color or width of a bundle another player is holding
 
 - **Date:** 2026-10-23
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** `CoopGuardTests`, which reads the source for ways to change a bundle that never ask `HeldByOther`. Not yet seen in the game.
 
@@ -387,7 +387,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-029: Two players changing one bundle at once could end with different bundles
 
 - **Date:** 2026-10-24
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** the simulator's shrinker (`RaceHuntTests`). 53 of 400 random runs ended apart; 21 do now. Not yet seen in the game.
 
@@ -402,7 +402,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-030: A pick-up of an item another player used up gave its ID to a different item
 
 - **Date:** 2026-10-24
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** the simulator's shrinker (`RaceHuntTests`). Not yet seen in the game.
 
@@ -417,7 +417,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-031: A health change at the same moment as another change could end with different bundles
 
 - **Date:** 2026-10-24
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** the simulator's shrinker (`RaceHuntTests`). Not yet seen in the game.
 
@@ -432,7 +432,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-032: A count change and a health change in one frame were counted twice by the other players
 
 - **Date:** 2026-10-24
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** the simulator's shrinker, once random play could include a guest dropping out and rejoining. The failing run had no rejoin in it. Not yet seen in the game.
 
@@ -447,7 +447,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-033: A guest joining in the same frame as a count change got the change twice
 
 - **Date:** 2026-10-24
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** the simulator's random play with guests dropping out and rejoining. Not yet seen in the game.
 
@@ -462,7 +462,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-034: A co-op probe that runs the real packet code in one game
 
 - **Date:** 2026-10-24
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Diagnostic
 
 **What.** `CoopProbe.cs` adds a developer key (`Co-op Probe Key`, off by default). Held or looked at, a bundle gets the packets the simulator uses, as if another player had sent them, through the real `ApplyState` and merge. It logs `[Probe] PASS` or `FAIL` for each check and a summary, then puts the bundle back as it was. Nothing is sent.
@@ -478,7 +478,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-035: The crew's way of taking a piece off a bundle didn't tell Coop or ask who held it
 
 - **Date:** 2026-10-24
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** the source-reading tests (`CoopSourceRuleTests`, `CoopGuardTests`), when the crew branch (J-023, J-024) was merged with the co-op branch. Not yet seen in the game.
 
@@ -489,7 +489,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-036: A settled packet arriving before the end of the frame lost a change and doubled another
 
 - **Date:** 2026-10-24
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** a code review of the co-op work, then reproduced in the simulator with a new `EndFrame` act (one player's frame ends and some messages arrive while the others' changes still wait). Not yet seen in the game.
 
@@ -500,6 +500,19 @@ There is no unit test: it is in the code that talks to Unity.
 **Also fixed in the simulator.** A guest leaving threw away messages the host had already passed on to the other guests. Those are on the host's own links and still arrive. The new act found it.
 
 **Not covered.** The random games compare peers with each other, so a count that is wrong the same way everywhere still passes them; only the J-036 tests check the count itself. A pending change to the tie color or width is still overwritten by a settled packet (the peers end the same, the local change is lost).
+
+## J-037: The host settled a candle health change twice, the first time with the old amount
+
+- **Date:** 2026-10-24
+- **Version:** 0.15.7
+- **Status:** Untested
+- **Found by:** a code review of the co-op work, reading Coop's `OnLocalItemHealthChanged`. Not yet seen in the game.
+
+**Problem.** Coop sends a health change as an `ItemHealthChanged` packet and then an `ItemAmountChanged` packet. The host settled the bundle after each. The first settle went out before the new amount had arrived, so every guest, the sender included, briefly rebuilt a candle bundle (whose count lives in `amount`) at the old count, and then again at the new one.
+
+**Fix.** Only the amount packet settles. Every health change is followed by an amount packet on the same reliable link, so nothing is missed. The simulator now sends the two as separate messages (`ItemHealth`, `ItemAmount`); `SimRules.SettleOnlyAfterAmount` is the switch, and its twin shows two settles without it.
+
+**Not covered.** If Coop ever sends health without amount, a health-only change would no longer be settled by the host. Coop 0.4.0 does not.
 
 ## J-038: The host dropped a guest's bundle change for a bundle it did not have
 
@@ -513,3 +526,20 @@ There is no unit test: it is in the code that talks to Unity.
 **Fix.** A packet for a bundle the host does not have is passed on, as it came, to everyone but the sender (`PassOn`, through Coop's `SendToAllExcept`). `SimRules.HostPassesOnUnknown` is the switch, with a twin test.
 
 **Not covered.** The guest it is passed to merges it with its own count as any other guest packet, since the host has settled nothing. If no player has the bundle, nothing happens.
+
+## J-039: Putting a hook from a held line on a rod dropped the line
+
+- **Date:** 2026-10-27
+- **Version:** 0.15.7
+- **Status:** Untested
+- **Found by:** a playtest report (holding a hook line and clicking an empty rod destroyed the line and threw the player off the boat). The Player.log shows Better Fishing attaching twice in one click, the second time as a lure swap.
+
+**Problem.** `GoPointer` drops the held item whenever the clicked button's `OnItemClick` returns true. The rod prefix returned true after giving the rod one hook, so the game dropped the whole line at the player's feet. In the same click Better Fishing handled a second hook handed over and, with the rod already hooked, swapped lures: it destroyed what it was handed and spawned a lure at the player, who was pushed off the boat.
+
+**Second cause, found from a stack-trace log.** Returning false from our prefix did not keep Better Fishing out: Harmony runs every prefix on a method even after one returns false. So Better Fishing's own prefix still ran for the held line, after the rod had taken one hook, saw a rod that was already hooked, and swapped lures. That destroyed the line and put a lure in the player's hand, where it pushed the player off the boat.
+
+**Fix.** The prefix always returns false, because the line stays in hand and `GiveOneToRod` drops it itself when the last hook goes. A rod that took a hook refuses anything handed to it that frame and the next. When Better Fishing is loaded, `HookLinePieces` also puts a prefix on its `AttachHookType` that skips a held line or a rod that just took a hook. The patch is applied the first time a hook is given to a rod, not at startup: compiling Better Fishing's method runs its `Lure` static setup, which needs the game's prefab list and threw at plugin start, aborting the rest of Bundle Up's patching. The single hook Bundle Up hands the rod itself is not a line, so Better Fishing still attaches that one.
+
+**Third cause: the line was dropped on release.** With the first two fixed, a left click kept the line and gave the rod its hook, but letting go of the click dropped the line. `GoPointer.LateUpdate` drops the held item when the pick-up key comes up with nothing under the crosshair, once `timerAfterPickup` is at least 0.66. After the rod takes a hook, the game no longer counts it as a target for the held line, so nothing is under the crosshair at release. A prefix on `GoPointer.LateUpdate` holds `timerAfterPickup` at 0.5 for that one release (`HookLinePieces.KeepHeldAfterGive`); it ends at the release, or 0.3 s after the click if the key is already up.
+
+**Not covered.** No test: the click path needs the game, and the Better Fishing patch is found by type name, so a Better Fishing update that renames it logs a warning and brings the bug back.

@@ -748,12 +748,24 @@ namespace Dizzy.FirewoodBundle
         // A line stays in hand. An empty rod takes one hook from it. Better Fishing has
         // a prefix here too that uses up whatever hook it is handed, so this one has to
         // run first, or a whole line would go onto the rod as one hook.
+        //
+        // The result is always false. GoPointer drops the held item when OnItemClick
+        // returns true, which would drop the line at the player's feet. Better Fishing then
+        // treats a second hook handed over in the same frame as a lure swap, destroying
+        // whatever is handed over and spawning a lure at the player. GiveOneToRod drops the
+        // line itself when the last hook goes.
         [HarmonyPriority(Priority.First)]
         [HarmonyBefore(HookLinePieces.BetterFishingGuid)]
         private static bool Prefix(ShipItemFishingRod __instance, PickupableItem heldItem, ref bool __result)
         {
             if (!FirewoodBundleConfig.HooksAreEnabled)
                 return true;
+            if (HookLinePieces.JustGaveTo(__instance))
+            {
+                __result = false;
+                return false;
+            }
+
             ShipItem held = FirewoodPieces.AsShip(heldItem);
             if (!HookLinePieces.IsLine(held))
                 return true;
@@ -763,8 +775,18 @@ namespace Dizzy.FirewoodBundle
                 return false;
             }
 
-            __result = HookLinePieces.GiveOneToRod(held, __instance);
+            HookLinePieces.GiveOneToRod(held, __instance);
+            __result = false;
             return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(GoPointer), "LateUpdate")]
+    internal static class HookLineKeepHeldPatch
+    {
+        private static void Prefix(GoPointer __instance)
+        {
+            HookLinePieces.KeepHeldAfterGive(__instance);
         }
     }
 
