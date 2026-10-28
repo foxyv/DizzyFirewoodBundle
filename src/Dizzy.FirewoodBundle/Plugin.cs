@@ -37,6 +37,7 @@ namespace Dizzy.FirewoodBundle
                 FirewoodBigLookPatch.Apply(_harmony);
                 TentPoles.Patch(_harmony);
                 Munitions.Patch(_harmony);
+                HookLinePieces.PatchBetterFishing(_harmony);
                 CoopBridge.Apply(_harmony);
             }
             catch (System.Exception ex)

@@ -328,6 +328,36 @@ namespace Dizzy.FirewoodBundle
             return GiveOneToRod(held, rod);
         }
 
+        // Harmony runs every prefix on a method, even after one returns false. So Better
+        // Fishing's own prefix on the rod click still ran for a held line, after the rod had
+        // taken one hook, and swapped lures: it destroyed the line and put a lure in the
+        // player's hand. This keeps it away from a line, and from a rod that just took a hook.
+        internal static void PatchBetterFishing(Harmony harmony)
+        {
+            if (!BetterFishingLoaded || harmony == null)
+                return;
+
+            System.Type type = AccessTools.TypeByName("BetterFishing.LurePatches+ShipItemFishingRodPatches");
+            MethodInfo attach = type != null ? AccessTools.Method(type, "AttachHookType") : null;
+            if (attach == null)
+            {
+                Plugin.Log.LogWarning("Better Fishing is loaded, but its rod click patch was not found. Putting a hook from a line on a rod may destroy the line.");
+                return;
+            }
+
+            harmony.Patch(attach, prefix: new HarmonyMethod(typeof(HookLinePieces), nameof(KeepLineAwayFromBetterFishing)));
+        }
+
+        private static bool KeepLineAwayFromBetterFishing(PickupableItem heldItem, ShipItemFishingRod __instance, ref bool __result)
+        {
+            if (!FirewoodBundleConfig.HooksAreEnabled)
+                return true;
+            if (!JustGaveTo(__instance) && !IsLine(FirewoodPieces.AsShip(heldItem)))
+                return true;
+            __result = false;
+            return false;
+        }
+
         private static ShipItemFishingRod _lastGivenRod;
         private static int _lastGivenFrame = -1;
 

@@ -523,6 +523,8 @@ There is no unit test: it is in the code that talks to Unity.
 
 **Problem.** `GoPointer` drops the held item whenever the clicked button's `OnItemClick` returns true. The rod prefix returned true after giving the rod one hook, so the game dropped the whole line at the player's feet. In the same click Better Fishing handled a second hook handed over and, with the rod already hooked, swapped lures: it destroyed what it was handed and spawned a lure at the player, who was pushed off the boat.
 
-**Fix.** The prefix always returns false, because the line stays in hand and `GiveOneToRod` drops it itself when the last hook goes. A rod that took a hook this frame refuses another one in the same frame, so a second call in the click cannot reach Better Fishing.
+**Second cause, found from a stack-trace log.** Returning false from our prefix did not keep Better Fishing out: Harmony runs every prefix on a method even after one returns false. So Better Fishing's own prefix still ran for the held line, after the rod had taken one hook, saw a rod that was already hooked, and swapped lures. That destroyed the line and put a lure in the player's hand, where it pushed the player off the boat.
 
-**Not covered.** I could not see where the second hook came from, so the same-frame refusal is a guard. It is not proven to be the cause. No test: the click path needs the game.
+**Fix.** The prefix always returns false, because the line stays in hand and `GiveOneToRod` drops it itself when the last hook goes. A rod that took a hook refuses anything handed to it that frame and the next. When Better Fishing is loaded, `HookLinePieces.PatchBetterFishing` also puts a prefix on its `AttachHookType` that skips a held line or a rod that just took a hook. The single hook Bundle Up hands the rod itself is not a line, so Better Fishing still attaches that one.
+
+**Not covered.** No test: the click path needs the game, and the Better Fishing patch is found by type name, so a Better Fishing update that renames it logs a warning and brings the bug back.
