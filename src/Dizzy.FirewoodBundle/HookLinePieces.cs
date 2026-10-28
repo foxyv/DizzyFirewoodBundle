@@ -331,10 +331,11 @@ namespace Dizzy.FirewoodBundle
         private static ShipItemFishingRod _lastGivenRod;
         private static int _lastGivenFrame = -1;
 
-        // A rod that took a hook this frame is not handed another one in the same frame.
+        // A rod that took a hook is not handed anything else in that frame or the next, whether
+        // it is a line or a single hook, so Better Fishing cannot read it as a lure swap.
         internal static bool JustGaveTo(ShipItemFishingRod rod)
         {
-            return rod != null && rod == _lastGivenRod && Time.frameCount == _lastGivenFrame;
+            return rod != null && rod == _lastGivenRod && Time.frameCount - _lastGivenFrame <= 1;
         }
 
         internal static bool GiveOneToRod(ShipItem line, ShipItemFishingRod rod)

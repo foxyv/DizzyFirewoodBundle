@@ -760,10 +760,16 @@ namespace Dizzy.FirewoodBundle
         {
             if (!FirewoodBundleConfig.HooksAreEnabled)
                 return true;
+            if (HookLinePieces.JustGaveTo(__instance))
+            {
+                __result = false;
+                return false;
+            }
+
             ShipItem held = FirewoodPieces.AsShip(heldItem);
             if (!HookLinePieces.IsLine(held))
                 return true;
-            if (__instance.health > 0f || HookLinePieces.JustGaveTo(__instance))
+            if (__instance.health > 0f)
             {
                 __result = false;
                 return false;
