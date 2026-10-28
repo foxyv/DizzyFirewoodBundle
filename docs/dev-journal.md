@@ -513,3 +513,20 @@ There is no unit test: it is in the code that talks to Unity.
 **Fix.** Only the amount packet settles. Every health change is followed by an amount packet on the same reliable link, so nothing is missed. The simulator now sends the two as separate messages (`ItemHealth`, `ItemAmount`); `SimRules.SettleOnlyAfterAmount` is the switch, and its twin shows two settles without it.
 
 **Not covered.** If Coop ever sends health without amount, a health-only change would no longer be settled by the host. Coop 0.4.0 does not.
+
+## J-039: Putting a hook from a held line on a rod dropped the line
+
+- **Date:** 2026-10-27
+- **Version:** —
+- **Status:** Untested
+- **Found by:** a playtest report (holding a hook line and clicking an empty rod destroyed the line and threw the player off the boat). The Player.log shows Better Fishing attaching twice in one click, the second time as a lure swap.
+
+**Problem.** `GoPointer` drops the held item whenever the clicked button's `OnItemClick` returns true. The rod prefix returned true after giving the rod one hook, so the game dropped the whole line at the player's feet. In the same click Better Fishing handled a second hook handed over and, with the rod already hooked, swapped lures: it destroyed what it was handed and spawned a lure at the player, who was pushed off the boat.
+
+**Second cause, found from a stack-trace log.** Returning false from our prefix did not keep Better Fishing out: Harmony runs every prefix on a method even after one returns false. So Better Fishing's own prefix still ran for the held line, after the rod had taken one hook, saw a rod that was already hooked, and swapped lures. That destroyed the line and put a lure in the player's hand, where it pushed the player off the boat.
+
+**Fix.** The prefix always returns false, because the line stays in hand and `GiveOneToRod` drops it itself when the last hook goes. A rod that took a hook refuses anything handed to it that frame and the next. When Better Fishing is loaded, `HookLinePieces` also puts a prefix on its `AttachHookType` that skips a held line or a rod that just took a hook. The patch is applied the first time a hook is given to a rod, not at startup: compiling Better Fishing's method runs its `Lure` static setup, which needs the game's prefab list and threw at plugin start, aborting the rest of Bundle Up's patching. The single hook Bundle Up hands the rod itself is not a line, so Better Fishing still attaches that one.
+
+**Third cause: the line was dropped on release.** With the first two fixed, a left click kept the line and gave the rod its hook, but letting go of the click dropped the line. `GoPointer.LateUpdate` drops the held item when the pick-up key comes up with nothing under the crosshair, once `timerAfterPickup` is at least 0.66. After the rod takes a hook, the game no longer counts it as a target for the held line, so nothing is under the crosshair at release. A prefix on `GoPointer.LateUpdate` holds `timerAfterPickup` at 0.5 for that one release (`HookLinePieces.KeepHeldAfterGive`); it ends at the release, or 0.3 s after the click if the key is already up.
+
+**Not covered.** No test: the click path needs the game, and the Better Fishing patch is found by type name, so a Better Fishing update that renames it logs a warning and brings the bug back.
