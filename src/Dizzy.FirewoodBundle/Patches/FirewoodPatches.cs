@@ -781,6 +781,15 @@ namespace Dizzy.FirewoodBundle
         }
     }
 
+    [HarmonyPatch(typeof(GoPointer), "LateUpdate")]
+    internal static class HookLineKeepHeldPatch
+    {
+        private static void Prefix(GoPointer __instance)
+        {
+            HookLinePieces.KeepHeldAfterGive(__instance);
+        }
+    }
+
     [HarmonyPatch(typeof(ShipItemFishingRod), nameof(ShipItemFishingRod.OnAltActivate))]
     internal static class HookLineRodTakePatch
     {

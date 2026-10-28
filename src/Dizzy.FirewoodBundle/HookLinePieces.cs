@@ -383,6 +383,41 @@ namespace Dizzy.FirewoodBundle
             return false;
         }
 
+        // GoPointer drops the held item when the pick-up key comes up with nothing under the
+        // crosshair, once the item has been held for a moment (timerAfterPickup of 0.66). After
+        // a rod takes a hook, the game no longer treats it as a target for the held line, so
+        // letting go of the click that gave the hook would drop the line. For that one release
+        // the timer is held below the limit. It is not touched on any other drop.
+        private static ShipItem _keptLine;
+        private static float _keptAt;
+        private static FieldInfo _pickupTimer;
+
+        internal static void KeepHeldAfterGive(GoPointer pointer)
+        {
+            if (_keptLine == null)
+                return;
+            if (pointer == null || _keptLine.held != pointer || Time.unscaledTime - _keptAt > 5f)
+            {
+                _keptLine = null;
+                return;
+            }
+
+            bool released = GameInput.GetKeyUp(InputName.PickUp) || GameInput.GetKeyUp(InputName.Throw);
+            bool down = GameInput.GetKey(InputName.PickUp) || GameInput.GetKey(InputName.Throw);
+            if (!released && !down && Time.unscaledTime - _keptAt > 0.3f)
+            {
+                _keptLine = null;
+                return;
+            }
+
+            if (_pickupTimer == null)
+                _pickupTimer = AccessTools.Field(typeof(GoPointer), "timerAfterPickup");
+            if (_pickupTimer != null)
+                _pickupTimer.SetValue(pointer, 0.5f);
+            if (released)
+                _keptLine = null;
+        }
+
         private static ShipItemFishingRod _lastGivenRod;
         private static int _lastGivenFrame = -1;
 
@@ -464,6 +499,8 @@ namespace Dizzy.FirewoodBundle
                 HookLineBuilder.Apply(line);
             }
 
+            _keptLine = line;
+            _keptAt = Time.unscaledTime;
             Plugin.Log.LogInfo("Put 1 fishing hook on the rod. " + left + " left on the line.");
             return true;
         }
