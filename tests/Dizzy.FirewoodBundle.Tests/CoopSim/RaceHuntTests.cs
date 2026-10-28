@@ -166,6 +166,36 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             Assert.Equal(2, other.BundlePacketsReceived - before);
         }
 
+        // J-038: the host does not have a bundle a guest changed. It can't settle it, and no
+        // longer passes it on either, so the other guest never heard.
+        private static SimNetwork ChangeABundleTheHostLacks(SimRules rules, out int id)
+        {
+            SimNetwork net = Scenario.Start(rules);
+            SimItem bundle = net.Host.Create(10, SimKind.Candle, 1, 4);
+            net.Settle();
+            id = bundle.Id;
+            net.Host.Items.Remove(id);
+            net.Peers[1].SetBundle(net.Peers[1].Items[id], 2);
+            net.Settle();
+            return net;
+        }
+
+        [Fact]
+        public void J38_AGuestsChangeToABundleTheHostLacks_StillReachesTheOtherGuest()
+        {
+            int id;
+            SimNetwork net = ChangeABundleTheHostLacks(new SimRules(), out id);
+            Assert.Equal(2, net.Peers[2].Items[id].Count);
+        }
+
+        [Fact]
+        public void J38_WithoutPassingItOn_TheOtherGuestNeverHears()
+        {
+            int id;
+            SimNetwork net = ChangeABundleTheHostLacks(new SimRules { HostPassesOnUnknown = false }, out id);
+            Assert.Equal(4, net.Peers[2].Items[id].Count);
+        }
+
         // J-030: one guest used an item up while another picked it up. The host heard of the
         // destroy first, then the request to pick up an item that is gone, and gave that ID to
         // the nearest item of the same prefab. Remembering remote destroys stops that.

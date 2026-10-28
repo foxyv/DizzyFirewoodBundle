@@ -328,6 +328,13 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             }
         }
 
+        // True when the bundle a packet is about is here.
+        internal bool Knows(SimMessage message)
+        {
+            BundleState received;
+            return BundleWire.TryRead(new BinaryReader(new MemoryStream(message.Body)), out received) && Items.ContainsKey(received.Id);
+        }
+
         // The host's reply to a guest's bundle packet: what the bundle is here now.
         internal void Answer(SimMessage message)
         {

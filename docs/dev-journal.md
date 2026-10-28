@@ -514,6 +514,19 @@ There is no unit test: it is in the code that talks to Unity.
 
 **Not covered.** If Coop ever sends health without amount, a health-only change would no longer be settled by the host. Coop 0.4.0 does not.
 
+## J-038: The host dropped a guest's bundle change for a bundle it did not have
+
+- **Date:** 2026-10-24
+- **Version:** —
+- **Status:** Untested
+- **Found by:** a code review of the co-op work. Reproduced in the simulator by removing a bundle from the host only. Not yet seen in the game.
+
+**Problem.** Since J-029 the host does not pass a guest's bundle packet on; it settles the bundle and sends that. When the host did not have the bundle (an ID that moved in one of Coop's pick-up corrections, or a bundle it had not spawned yet), there was nothing to settle and the packet went no further, so another guest that did have the bundle kept the old count for good.
+
+**Fix.** A packet for a bundle the host does not have is passed on, as it came, to everyone but the sender (`PassOn`, through Coop's `SendToAllExcept`). `SimRules.HostPassesOnUnknown` is the switch, with a twin test.
+
+**Not covered.** The guest it is passed to merges it with its own count as any other guest packet, since the host has settled nothing. If no player has the bundle, nothing happens.
+
 ## J-039: Putting a hook from a held line on a rod dropped the line
 
 - **Date:** 2026-10-27

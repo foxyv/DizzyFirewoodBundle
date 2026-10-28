@@ -160,7 +160,8 @@ namespace Dizzy.FirewoodBundle.Tests.CoopSim
             to.Receive(message);
 
             // The host settles a guest's bundle change and tells everyone, the sender too.
-            if (message.Type == "Bundle" && to.IsHost && Rules.HostArbitrates && SyncRules.ShouldArbitrate(true))
+            if (message.Type == "Bundle" && to.IsHost && Rules.HostArbitrates && SyncRules.ShouldArbitrate(true)
+                && (to.Knows(message) || !Rules.HostPassesOnUnknown))
             {
                 to.Answer(message);
                 return true;
