@@ -517,7 +517,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-038: The host dropped a guest's bundle change for a bundle it did not have
 
 - **Date:** 2026-10-24
-- **Version:** —
+- **Version:** 0.15.8
 - **Status:** Untested
 - **Found by:** a code review of the co-op work. Reproduced in the simulator by removing a bundle from the host only. Not yet seen in the game.
 
