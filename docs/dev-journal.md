@@ -303,7 +303,7 @@ Status is one of:
 ## J-023: A crewman uses up a whole candle bundle for one lantern
 
 - **Date:** 2026-10-22
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 
 **Problem.** With the Virtual Crew mod, a crewman refilling a lantern could use every candle in a bundle.
@@ -315,7 +315,7 @@ Status is one of:
 ## J-024: The crew's steward fetches a food bundle again and again
 
 - **Date:** 2026-10-22
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Report:** Exocet, on Discord, about the Crew mod (Virtual Crew 0.2.3 is the version on this PC)
 
@@ -334,7 +334,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-025: Two players taking a piece off one bundle at once make a piece too many
 
 - **Date:** 2026-10-23
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** the co-op simulator (`CoopScenarioTests`, X1). Not yet seen in the game.
 
@@ -349,7 +349,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-026: A bundle combined while another player picks it up gives its ID to a different bundle
 
 - **Date:** 2026-10-23
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** the co-op simulator (X2). Not yet seen in the game.
 
@@ -362,7 +362,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-027: A way to check two players' logs for bundles that went out of step
 
 - **Date:** 2026-10-23
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Diagnostic
 
 **What.** `scripts/coop_log_check.py` reads the host's and the guest's `LogOutput.log` from one co-op session and reports bundles that were sent and never received, bundles whose last count differs between the two players, bundles sent to a player who does not have them, warnings and errors from Dizzy Bundle Up, and (with `--stall`) stall reports. It lists merges of simultaneous changes and ignored pick-ups as notes. `scripts/test_coop_log_check.py` tests it.
@@ -374,7 +374,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-028: You can change the color or width of a bundle another player is holding
 
 - **Date:** 2026-10-23
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** `CoopGuardTests`, which reads the source for ways to change a bundle that never ask `HeldByOther`. Not yet seen in the game.
 
@@ -387,7 +387,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-029: Two players changing one bundle at once could end with different bundles
 
 - **Date:** 2026-10-24
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** the simulator's shrinker (`RaceHuntTests`). 53 of 400 random runs ended apart; 21 do now. Not yet seen in the game.
 
@@ -402,7 +402,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-030: A pick-up of an item another player used up gave its ID to a different item
 
 - **Date:** 2026-10-24
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** the simulator's shrinker (`RaceHuntTests`). Not yet seen in the game.
 
@@ -417,7 +417,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-031: A health change at the same moment as another change could end with different bundles
 
 - **Date:** 2026-10-24
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** the simulator's shrinker (`RaceHuntTests`). Not yet seen in the game.
 
@@ -432,7 +432,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-032: A count change and a health change in one frame were counted twice by the other players
 
 - **Date:** 2026-10-24
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** the simulator's shrinker, once random play could include a guest dropping out and rejoining. The failing run had no rejoin in it. Not yet seen in the game.
 
@@ -447,7 +447,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-033: A guest joining in the same frame as a count change got the change twice
 
 - **Date:** 2026-10-24
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** the simulator's random play with guests dropping out and rejoining. Not yet seen in the game.
 
@@ -462,7 +462,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-034: A co-op probe that runs the real packet code in one game
 
 - **Date:** 2026-10-24
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Diagnostic
 
 **What.** `CoopProbe.cs` adds a developer key (`Co-op Probe Key`, off by default). Held or looked at, a bundle gets the packets the simulator uses, as if another player had sent them, through the real `ApplyState` and merge. It logs `[Probe] PASS` or `FAIL` for each check and a summary, then puts the bundle back as it was. Nothing is sent.
@@ -478,7 +478,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-035: The crew's way of taking a piece off a bundle didn't tell Coop or ask who held it
 
 - **Date:** 2026-10-24
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** the source-reading tests (`CoopSourceRuleTests`, `CoopGuardTests`), when the crew branch (J-023, J-024) was merged with the co-op branch. Not yet seen in the game.
 
@@ -489,7 +489,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-036: A settled packet arriving before the end of the frame lost a change and doubled another
 
 - **Date:** 2026-10-24
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** a code review of the co-op work, then reproduced in the simulator with a new `EndFrame` act (one player's frame ends and some messages arrive while the others' changes still wait). Not yet seen in the game.
 
@@ -504,7 +504,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-037: The host settled a candle health change twice, the first time with the old amount
 
 - **Date:** 2026-10-24
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** a code review of the co-op work, reading Coop's `OnLocalItemHealthChanged`. Not yet seen in the game.
 
@@ -517,7 +517,7 @@ There is no unit test: it is in the code that talks to Unity.
 ## J-039: Putting a hook from a held line on a rod dropped the line
 
 - **Date:** 2026-10-27
-- **Version:** —
+- **Version:** 0.15.7
 - **Status:** Untested
 - **Found by:** a playtest report (holding a hook line and clicking an empty rod destroyed the line and threw the player off the boat). The Player.log shows Better Fishing attaching twice in one click, the second time as a lure swap.
 
