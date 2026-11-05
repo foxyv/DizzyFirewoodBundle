@@ -72,10 +72,22 @@ namespace Dizzy.FirewoodBundle
                 return 0;
             if (!kind.CountInAmount)
                 return SausageStacks.CountOf(item);
-            int extra = Mathf.RoundToInt(item.amount) - SingleAmount(item);
+            int extra = ExtraOf(item);
             if (extra <= 0)
                 return 1;
             return extra % ColorStride + 1;
+        }
+
+        // The saved amount above a single piece. A bundle always writes a whole number, so
+        // a fractional amount is another mod's mark on a single piece (Tent and Plank marks
+        // a braced pole in a slot), never a count.
+        private static int ExtraOf(ShipItem item)
+        {
+            float raw = item.amount;
+            int whole = Mathf.RoundToInt(raw);
+            if (Mathf.Abs(raw - whole) > 0.01f)
+                return 0;
+            return whole - SingleAmount(item);
         }
 
         internal static int ColorOf(ShipItem item)
@@ -85,7 +97,7 @@ namespace Dizzy.FirewoodBundle
                 return 0;
             if (!kind.CountInAmount)
                 return Mathf.Clamp(SausageStacks.ColorOf(item), 0, kind.ColorCount - 1);
-            int extra = Mathf.RoundToInt(item.amount) - SingleAmount(item);
+            int extra = ExtraOf(item);
             if (extra <= 0)
                 return 0;
             int color = extra / ColorStride;
@@ -365,6 +377,7 @@ namespace Dizzy.FirewoodBundle
                 return AddHeldToPile(held, target, pointer, count);
 
             int previousCount = CountOf(held);
+            TentPoles.EndBrace(held);
             SausageStacks.MergeFood(held, target, previousCount, CountOf(target));
             // Two loose apples make a bag, not a stack.
             if (KindOf(held).AlwaysHung)
@@ -432,6 +445,8 @@ namespace Dizzy.FirewoodBundle
         private static bool AddHeldToPile(ShipItem held, ShipItem pile, GoPointer pointer, int count)
         {
             int previousCount = CountOf(pile);
+            // A braced pole refuses to be dropped, so it lets go before it is used up.
+            TentPoles.EndBrace(held);
             SausageStacks.MergeFood(pile, held, previousCount, CountOf(held));
             WriteCount(pile, count);
             try

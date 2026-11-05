@@ -53,6 +53,51 @@ namespace Dizzy.FirewoodBundle
             return false;
         }
 
+        // Tent and Plank 1.1 marks a braced pole that goes into an inventory slot by setting
+        // its amount to 1, which is also how a bundle of two is saved. The mark is rewritten
+        // to a fractional amount: their take-out check (amount of 1 or more) still sees it,
+        // and CountOf ignores any amount that is not a whole number.
+        internal const float BraceMark = 1.25f;
+
+        private static FieldInfo _braced;
+        private static MethodInfo _release;
+
+        // Called before a pole goes into a slot, to learn whether it was a bundle already.
+        internal static int CountBeforeStow(ShipItem item)
+        {
+            return FirewoodPieces.KindOf(item) == BundleKind.WoodPole ? FirewoodPieces.CountOf(item) : 0;
+        }
+
+        internal static void KeepBraceMark(ShipItem item, int countBefore)
+        {
+            if (!Loaded || item == null || countBefore != 1)
+                return;
+            if (Mathf.Approximately(item.amount, 1f))
+                item.amount = BraceMark;
+        }
+
+        // A bundle is not a pole, so their H key no longer reaches it. A pole that is glued
+        // while braced would be stuck in push mode, where a left click does not drop it.
+        internal static void EndBrace(ShipItem item)
+        {
+            if (!Loaded || item == null)
+                return;
+
+            if (_braced == null || _release == null)
+            {
+                Type type = AccessTools.TypeByName("TentandPlank.PoleBrace");
+                if (type == null)
+                    return;
+                _braced = AccessTools.Field(type, "Braced");
+                _release = AccessTools.Method(type, "Release");
+                if (_braced == null || _release == null)
+                    return;
+            }
+
+            if ((ShipItem)_braced.GetValue(null) == item)
+                _release.Invoke(null, null);
+        }
+
         // Their length fitter rebuilds the mesh, the box and the mass from health.
         internal static void ApplyLength(ShipItem pole, float metres)
         {

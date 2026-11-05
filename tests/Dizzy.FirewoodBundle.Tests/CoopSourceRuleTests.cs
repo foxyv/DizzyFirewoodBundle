@@ -75,6 +75,7 @@ namespace Dizzy.FirewoodBundle.Tests
             { "CoopBridge.TryRead", "Fills the packet being sent. It is not the item." },
             { "SausageStacks.MergeFood", "Food amount is the weight of the portion, not the count." },
             { "SausageStacks.CopyFood", "Food amount is the weight of the portion, not the count." },
+            { "TentPoles.KeepBraceMark", "Rewrites Tent and Plank's mark on a single pole to a fractional amount. The count stays one before and after." },
             { "HookLinePieces.TryString", "Puts back the amount it had before WriteCount, when stringing fails. WriteCount noted the count it started from." },
             { "HookLinePieces.AddHeldToLine", "Puts back the amount it had before WriteCount, when adding to the line fails." },
             { "HookLinePieces.FillLine", "Puts back the amounts it had before WriteCount, when filling the line fails." },

@@ -821,6 +821,23 @@ namespace Dizzy.FirewoodBundle
         }
     }
 
+    // Tent and Plank writes its push-mode mark in a prefix on this method. The count is read
+    // before that, and the mark is made fractional after it.
+    [HarmonyPatch(typeof(GPButtonInventorySlot), "InsertItem")]
+    [HarmonyBefore(TentPoles.PluginGuid)]
+    internal static class PoleBraceMarkPatch
+    {
+        private static void Prefix(ShipItem item, ref int __state)
+        {
+            __state = TentPoles.CountBeforeStow(item);
+        }
+
+        private static void Postfix(ShipItem item, int __state)
+        {
+            TentPoles.KeepBraceMark(item, __state);
+        }
+    }
+
     [HarmonyPatch(typeof(ShipItem), nameof(ShipItem.OnEnterInventory))]
     internal static class HookLineStowPatch
     {
