@@ -188,6 +188,7 @@ Settings are in `BepInEx\config\com.dizzy.sailwind.firewoodbundle.cfg`. The file
 | Hooks | Hook Flare | 1 | How far hook points swing out from the string. |
 | Hooks | Spacing | 1 | Gap between hooks on a line. |
 | Hooks | Line Length | 1 | How far hooks hang below the string. |
+| Developer | Stall Messages | false | Write a `[Stall]` warning to the log for a slow rebuild or frame. For tracking down freezes. |
 
 ## Saves
 
