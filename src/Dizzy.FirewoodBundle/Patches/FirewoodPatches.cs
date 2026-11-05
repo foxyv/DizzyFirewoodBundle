@@ -87,6 +87,11 @@ namespace Dizzy.FirewoodBundle
                 && (!held.big || IsCandleLantern(held, ___pointedAtButton)))
                 return;
 
+            // A ladder, ratlines, door or winch is not an item and cannot take a placed one. The
+            // game lets any held item use it, so a bundle keeps that look and the click goes through.
+            if (___pointedAtButton != null && IsPlainControl(___pointedAtButton))
+                return;
+
             if (___pointedAtButton != null)
                 ___pointedAtButton.ForceUnlook();
 
@@ -105,6 +110,15 @@ namespace Dizzy.FirewoodBundle
 
             ___pointedAtButton = null;
             ___currentLookDistance = 0f;
+        }
+
+        // The same test the game uses to let a held item aim at a button that is not an item
+        // (bunks excepted), minus any surface that takes placed items, which the bundle sets onto.
+        private static bool IsPlainControl(GoPointerButton button)
+        {
+            return button.GetComponent<ShipItem>() == null
+                && button.GetComponent<GPButtonBed>() == null
+                && !button.allowPlacingItems;
         }
 
         private static bool IsCandleLantern(ShipItem held, GoPointerButton button)
