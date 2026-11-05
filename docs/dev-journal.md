@@ -543,3 +543,33 @@ There is no unit test: it is in the code that talks to Unity.
 **Third cause: the line was dropped on release.** With the first two fixed, a left click kept the line and gave the rod its hook, but letting go of the click dropped the line. `GoPointer.LateUpdate` drops the held item when the pick-up key comes up with nothing under the crosshair, once `timerAfterPickup` is at least 0.66. After the rod takes a hook, the game no longer counts it as a target for the held line, so nothing is under the crosshair at release. A prefix on `GoPointer.LateUpdate` holds `timerAfterPickup` at 0.5 for that one release (`HookLinePieces.KeepHeldAfterGive`); it ends at the release, or 0.3 s after the click if the key is already up.
 
 **Not covered.** No test: the click path needs the game, and the Better Fishing patch is found by type name, so a Better Fishing update that renames it logs a warning and brings the bug back.
+
+## J-040: A pole put in a slot in push mode became a bundle of two
+
+- **Date:** 2026-11-05
+- **Version:** 0.15.9
+- **Status:** Fixed
+- **Issue:** [#49](https://github.com/foxyv/DizzyFirewoodBundle/issues/49)
+
+**Problem.** With Tent and Plank 1.1, a pole put into push mode, stowed with the 1 key and taken out again was a bundle of two. Adding it to a bundle added two, and a pole glued while still in push mode could not be dropped with a left click.
+
+**Cause.** Tent and Plank marks a braced pole that goes into an inventory slot by setting its `amount` to 1 (`InventoryBrace.PutAway`) and clears it on take-out (`InventoryBrace.TakenOut`). Bundle Up saves a count in `amount` too, where 1 means a bundle of two. `TakenOut` only clears the mark when `WoodPoles.IsPole` says yes, and `TentPoles.HideBundleFromPoleChecks` makes that say no for a bundle, so the mark was read as a count and never cleared. Separately, a pole glued while it was `PoleBrace.Braced` stayed braced. Their `AllowsDrop` only lets a drop through on the push key release, and their H key asks `IsPole`, which is false for a bundle, so there was no way out of push mode. Found from the log: a pole entered a slot with `amount 1` and no `WriteCount` call before it.
+
+**Fix.** `PoleBraceMarkPatch` reads the pole's count before their stow prefix (`HarmonyBefore`), and if it was a single pole whose amount became 1, rewrites the mark to 1.25. Their take-out check (`amount >= 1`) still sees it. `FirewoodPieces.ExtraOf` ignores any amount that is not a whole number, so `CountOf` and `ColorOf` read the pole as one. `TryGlue` and `AddHeldToPile` call `TentPoles.EndBrace`, which calls their `PoleBrace.Release` when the glued pole is the braced one. The raw write in `TentPoles.KeepBraceMark` is on the allowed list in `CoopSourceRuleTests` with a reason.
+
+**Not covered.** A pole already saved in a slot with the old mark (`amount 1`) still reads as a bundle of two. Their `Mark = 1f` is the other half of the clash; the lasting fix is for Tent and Plank to use an amount Bundle Up does not read as a count.
+
+## J-041: A held bundle could not climb a ladder
+
+- **Date:** 2026-11-05
+- **Version:** 0.15.9
+- **Status:** Fixed
+- **Issue:** [#37](https://github.com/foxyv/DizzyFirewoodBundle/issues/37)
+
+**Problem.** With a bundle in hand, a ladder could not be clicked, so the player could not climb it.
+
+**Cause.** `FirewoodLookPatch`, a postfix on `GoPointer.DoRaycast`, cleared the look on anything the held bundle could not be placed on, so a bundle could be set down. That cleared every control that is not an item as well: a ladder, ratlines, a house door, a trapdoor, a rope winch. A temporary log showed the look ray reaching the `BoatLadder` at 0.7 m to 1.8 m while the pointer ended on nothing, so the click had nothing to activate.
+
+**Fix.** The patch keeps the look on a button that is not an item, not a bunk (`GPButtonBed`) and not a surface that takes placed items (`allowPlacingItems`). That is the game's own test for letting a held item aim at a control, minus placement surfaces. The held hook and line path already kept non-item controls.
+
+**Not covered.** No test: the look path needs the game. Only a firewood bundle on a ladder was tried in play.
