@@ -9,6 +9,7 @@ namespace Dizzy.FirewoodBundle
         internal static ConfigEntry<int> MaxPieces;
         internal static ConfigEntry<KeyCode> ColorKey;
         internal static ConfigEntry<KeyCode> ProbeKey;
+        internal static ConfigEntry<bool> StallMessages;
         internal static ConfigEntry<string>[] TieColorNames;
         internal static ConfigEntry<Color>[] TieColorValues;
         internal static ConfigEntry<bool> CandlesEnabled;
@@ -70,6 +71,11 @@ namespace Dizzy.FirewoodBundle
         internal static bool IsEnabled
         {
             get { return Enabled == null || Enabled.Value; }
+        }
+
+        internal static bool LogStalls
+        {
+            get { return StallMessages != null && StallMessages.Value; }
         }
 
         internal static int PieceLimit
@@ -460,6 +466,12 @@ namespace Dizzy.FirewoodBundle
                 "Co-op Probe Key",
                 KeyCode.None,
                 "For testing. Hold or look at a bundle and press this key to run a self-test of the co-op code on it, with no other player. The result is in the log under [Probe]. The bundle is put back as it was. Needs Sailwind Coop installed. None turns it off.");
+
+            StallMessages = config.Bind(
+                "Developer",
+                "Stall Messages",
+                false,
+                "Write a [Stall] warning to the log when a bundle rebuild takes over 30 ms or a frame takes over half a second. Meant for tracking down freezes. Off by default. This does not change the freeze report in BundleUp-stall.log.");
 
             BindTieColors(config);
 

@@ -31,14 +31,14 @@ namespace Dizzy.FirewoodBundle
         internal static void Report(string what, Stopwatch watch)
         {
             double ms = watch.Elapsed.TotalMilliseconds;
-            if (ms >= SlowMs)
+            if (ms >= SlowMs && FirewoodBundleConfig.LogStalls)
                 Plugin.Log.LogWarning("[Stall] " + what + " took " + ms.ToString("0") + " ms.");
         }
 
         internal static void Frame()
         {
             float dt = Time.unscaledDeltaTime;
-            if (dt >= SlowFrame)
+            if (dt >= SlowFrame && FirewoodBundleConfig.LogStalls)
                 Plugin.Log.LogWarning("[Stall] A frame took " + dt.ToString("0.00") + " s (at " + Time.realtimeSinceStartup.ToString("0") + " s).");
         }
 
